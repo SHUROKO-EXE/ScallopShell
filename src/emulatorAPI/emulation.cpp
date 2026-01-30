@@ -215,4 +215,9 @@ int Emulator::getInputFd()
 {
     return qemu_input_fd_;
 }
+
+pid_t Emulator::getChildPid()
+{
+    return child_pid_;
+}
 #endif

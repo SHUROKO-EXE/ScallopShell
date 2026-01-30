@@ -166,6 +166,12 @@ public:
     static int getInputFd();
 
     /**
+     * Get the child process PID (QEMU subprocess).
+     * Returns -1 if no child process is running.
+     */
+    static pid_t getChildPid();
+
+    /**
      * Get the number of virtual CPUs.
      * Returns the count of VCPUs available in the emulator.
      */

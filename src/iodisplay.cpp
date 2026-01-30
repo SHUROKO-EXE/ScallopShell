@@ -1,6 +1,8 @@
 #include "iodisplay.hpp"
 
 #include <unistd.h>
+#include <fcntl.h>
+#include <filesystem>
 #include <vector>
 #include <string>
 
@@ -18,12 +20,15 @@ namespace ScallopUI
             std::string currentLine_;
             std::string inputBuffer_;
             std::vector<char> readBuffer_;
+            std::string findFDBuffer_;
             Box renderBox_;
             int scrollOffset_ = 0;
             bool followTail_ = true;
             int lastLineCount_ = 0;
             int lastOutputFd_ = -1;
             Component inputComponent_;
+            bool findFD = false;
+            int watchedFd_ = -1;  // -1 means use default from Emulator
 
             Impl()
             {
@@ -46,7 +51,7 @@ namespace ScallopUI
 
             void readFromFd()
             {
-                int outputFd = Emulator::getOutputFd();
+                int outputFd = (watchedFd_ >= 0) ? watchedFd_ : Emulator::getOutputFd();
                 if (outputFd < 0) return;
 
                 // Detect fd change (e.g., after reset) and clear output
@@ -114,6 +119,59 @@ namespace ScallopUI
 
                 int totalLines = static_cast<int>(lines_.size());
                 int maxScroll = std::max(0, totalLines - 1);
+
+                // Ctrl+F or '/' to enter goto mode (when focused and not editing)
+                if (Focused() && (e == Event::CtrlF || e == Event::Character('/'))) {
+                    findFD = true;
+                    findFDBuffer_.clear();
+                    return true;
+                }
+
+                // Handle goto mode input
+                if (findFD) {
+                    if (e == Event::Escape) {
+                        findFD = false;
+                        return true;
+                    }
+                    if (e == Event::Return) {
+                        if (findFDBuffer_.empty()) {
+                            // Reset to default
+                            if (watchedFd_ >= 0) {
+                                ::close(watchedFd_);
+                                watchedFd_ = -1;
+                            }
+                        } else {
+                            pid_t pid = Emulator::getChildPid();
+                            if (pid > 0) {
+                                int targetFd = std::stoi(findFDBuffer_);
+                                std::filesystem::path path = std::filesystem::path("/proc") / std::to_string(pid) / "fd" / std::to_string(targetFd);
+                                int fd = ::open(path.c_str(), O_RDONLY | O_NONBLOCK);
+                                if (fd >= 0) {
+                                    if (watchedFd_ >= 0) ::close(watchedFd_);
+                                    watchedFd_ = fd;
+                                    // Clear buffer on fd change
+                                    lines_.clear();
+                                    lines_.push_back("");
+                                    currentLine_.clear();
+                                    scrollOffset_ = 0;
+                                    lastLineCount_ = 0;
+                                    followTail_ = true;
+                                }
+                            }
+                        }
+                        findFD = false;
+                        return true;
+                    }
+                    if (e == Event::Backspace && !findFDBuffer_.empty()) {
+                        findFDBuffer_.pop_back();
+                        return true;
+                    }
+                    if (e.is_character()) {
+                        findFDBuffer_ += e.character();
+                        return true;
+                    }
+                    return true; // Consume all events in goto mode
+                }
 
                 // Handle scroll keys FIRST, before input component
                 if (e == Event::ArrowUp)
@@ -245,7 +303,21 @@ namespace ScallopUI
                     }));
                 }
 
-                auto display = vbox(std::move(mainContent)) | border | reflect(renderBox_);
+                auto display = vbox(std::move(mainContent));
+
+
+                auto gotoBar = hbox({
+                    text("   Watch FD: ") | bold | color(Color::Magenta),
+                    text(findFDBuffer_) | color(Color::Magenta),
+                    text("_") | blink | color(Color::Magenta),
+                    });
+
+                if (findFD) {
+                    display = vbox({display | border | reflect(renderBox_), gotoBar}) ;
+                }
+                else {
+                    display = display | border | reflect(renderBox_);
+                }
 
                 if (Focused())
                     return display | color(Color::Magenta);
