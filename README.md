@@ -107,7 +107,7 @@ Commercial relicensing may be available in the future.
 
 ## Trademark
 
-The project name and logo are trademarks of Bradley Reece Fernandez.
+The project name and logo are trademarks of SHUROKO.EXE.
 Use of the name or logo in commercial offerings requires explicit permission.
 This project is not affiliated with, endorsed by, or sponsored by any company unless explicitly stated.
 
