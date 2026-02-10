@@ -1,5 +1,5 @@
 
-# Scallop Shell - Disassembler, Debugger for Polymorphic code
+# Scallop Shell - Debugger and Decompiler for Polymorphic code
 
 <img width="520" height="520" alt="pixil-frame-0(2)" src="https://github.com/user-attachments/assets/499ccef4-afb0-4c02-888e-1045d65894cb" />
 
@@ -7,11 +7,11 @@ Alpha 1.1.0
 
 ## Supported Platforms
 
-Linux, possibly macOS  
+Linux, macOS in development
 
 ## Motivation
 
-GDB, pwndbg, Ghidra, IDA, are the current industry standards in reverse engineering. They are not well optimized for reverse engineering polymorphic binaries. The debuggers statically disassemble memory instead of displaying currently run instructions. They also aren't supported on Windows, and the windows debuggers are mostly GUI based. The decompilers completely break once you involve polymorphic code.
+GDB, pwndbg, Ghidra, IDA, are the current industry standards in reverse engineering. They are not well optimized for reverse engineering polymorphic binaries. The debuggers statically disassemble memory instead of displaying currently run instructions. They also aren't supported on Windows, and the windows debuggers are mostly GUI based. The decompilers completely break once you involve polymorphic code. 
 
 ## Usage
 
@@ -65,14 +65,15 @@ You can also just move it to your /usr/bin/. I don't see a downside to this.
  
 ## Controls
 
-The controls right now are not ideal. CtrlS will assign you to the CLI, CtrlA to the memory display, CtrlD the disassembly, CtrlI for the I/O display. If you want to patch the bytes in memory or code display, the display *must be selected*. This is indicated by the window being highlighted. Up and Down arrows do different things in different windows (CLI and I/O display the up arrow lets you go to the memory display, the other displays have scrolling instead). If you want to access the other tabs, you have to have the memory display selected, then press ShiftTab. Tab is not currently working. Again, sorry for any end users using this right now. The controls are bad and this will be improved.
+The controls right now are not ideal. CtrlS will assign you to the CLI, CtrlA to the memory display, CtrlD the disassembly, CtrlI for the I/O display. If you want to patch the bytes in memory or code display, the display *must be selected*. This is indicated by the window being highlighted. Up and Down arrows do different things in different windows (CLI and I/O display the up arrow lets you go to the memory display, the other displays have scrolling instead). If you want to access the other tabs, you have to have the memory display selected, then press ShiftTab. Tab is not currently working. Again, sorry for any end users using this right now. The controls are bad and this will be improved. CtrlF will let you search memory in the memory display, and search for a specific file descriptor in the I/O display.  
+
 ## Live Patching
 
 One feature of Scallop Shell is live patching in the byte displays. If you want to change any of the bytes in the display, just click on the byte you want to change. Of course, the only values you can enter are 0-9 and A-F. Once you're done patching the bytes, hit enter and it'll save. You can hit Shift+Z to undo the edits you made UNTIL you step to the next instruction. Upon stepping, the live patcher will send a request to the emulator to modify the memory you changed. This then clears the history, so undoing is no longer possible. You can still edit it again of course.
 
 ## Notepad 
 
-You can take notes on the Notepad tab about what you're working on. Ctrl+S to save. When you open Scallop Shell in the same directory again, it'll open your old notes back up.
+You can take notes on the Notepad tab about what you're working on. Ctrl+S to save. When you open up that binary in Scallop Shell again, it'll open your old notes back up.
 
 ## Debugging
 
@@ -93,7 +94,7 @@ Currently, all instructions executed outside of the binary range are ignored. Th
 
 ## Decompilation
 
-Currently very experimental. It reconstructs the binary from the runtime instruction dump at /tmp/branchlog.csv, only with the instructions that have been run. This *DOES NOT* work for self modifying binaries: it preserves the first instruction that is run at a certain address, making this completely useless until it's supported. For now, please use standard reverse engineering workflows. Development on the decompiler is dynamic, and constant changes will occur until it is at a working stage.
+Currently very experimental. It reconstructs the binary from the runtime instruction dump CSV, only with the instructions that have been run. This *DOES NOT YET* work for self modifying binaries: it preserves the first instruction that is run at a certain address, making this completely useless until it's supported. The theory is there and the implementation is planned. For now, please use standard reverse engineering workflows. Development on the decompiler is dynamic, and constant changes will occur until it is at a working stage.
 
 ## License
 
