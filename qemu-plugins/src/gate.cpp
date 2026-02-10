@@ -1,5 +1,6 @@
 #include "gate.hpp"
 #include "debug.hpp"
+#include "main.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -7,8 +8,7 @@
 
 GateManager::GateManager()
     : logging_enabled_(1),
-      filter_lo_(0),
-      filter_hi_(static_cast<uintptr_t>(-1)) {
+      focus_ranges_(std::make_shared<const std::vector<FocusRange>>()) {
     for (auto &gate : gates_) {
         gate.running.store(1, std::memory_order_relaxed);
         gate.tokens.store(0, std::memory_order_relaxed);
@@ -20,6 +20,7 @@ GateManager::GateManager()
 
 
     }
+    pthread_mutex_init(&focus_write_mu_, nullptr);
 }
 
 gate_t &GateManager::gateFor(unsigned vcpu) {
@@ -105,9 +106,7 @@ void GateManager::waitIfNeeded(unsigned vcpu, uint64_t pc) {
         return;
     }
 
-    auto lo = filter_lo_.load(std::memory_order_relaxed);
-    auto hi = filter_hi_.load(std::memory_order_relaxed);
-    if (pc < lo || pc > hi) {
+    if (!isInRange(pc)) {
         return;
     }
 
@@ -129,11 +128,131 @@ void GateManager::waitIfNeeded(unsigned vcpu, uint64_t pc) {
 }
 
 void GateManager::inRange(uint64_t lowAddr, uint64_t highAddr) {
+    clearFocusRanges();
+    if (lowAddr == 0 && highAddr == 0) {
+        return;
+    }
+    addFocusRange(lowAddr, highAddr);
+}
+
+bool GateManager::isInRange(uint64_t pc) const {
+    auto ranges = std::atomic_load(&focus_ranges_);
+    if (!ranges || ranges->empty()) {
+        return true;
+    }
+    for (const auto &range : *ranges) {
+        if (pc >= range.lo && pc <= range.hi) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void GateManager::addFocusRange(uint64_t lowAddr, uint64_t highAddr)
+{
     if (highAddr < lowAddr) {
         std::swap(lowAddr, highAddr);
     }
-    filter_lo_.store(static_cast<uintptr_t>(lowAddr), std::memory_order_relaxed);
-    filter_hi_.store(static_cast<uintptr_t>(highAddr), std::memory_order_relaxed);
+
+    pthread_mutex_lock(&focus_write_mu_);
+
+    auto oldv = std::atomic_load(&focus_ranges_);
+    auto newv = std::make_shared<std::vector<FocusRange>>(oldv ? *oldv : std::vector<FocusRange>{});
+
+    newv->push_back(FocusRange{lowAddr, highAddr});
+    std::sort(newv->begin(), newv->end(), [](const FocusRange &a, const FocusRange &b) {
+        if (a.lo != b.lo) return a.lo < b.lo;
+        return a.hi < b.hi;
+    });
+
+    std::vector<FocusRange> merged;
+    for (const auto &r : *newv) {
+        if (merged.empty() || r.lo > merged.back().hi + 1) {
+            merged.push_back(r);
+        } else if (r.hi > merged.back().hi) {
+            merged.back().hi = r.hi;
+        }
+    }
+
+    std::atomic_store(&focus_ranges_, std::make_shared<const std::vector<FocusRange>>(std::move(merged)));
+
+    pthread_mutex_unlock(&focus_write_mu_);
+}
+
+void GateManager::removeFocusRange(uint64_t lowAddr, uint64_t highAddr)
+{
+    if (highAddr < lowAddr) {
+        std::swap(lowAddr, highAddr);
+    }
+
+    pthread_mutex_lock(&focus_write_mu_);
+
+    auto oldv = std::atomic_load(&focus_ranges_);
+    std::vector<FocusRange> next;
+    if (oldv) {
+        for (const auto &r : *oldv) {
+            if (highAddr < r.lo || lowAddr > r.hi) {
+                next.push_back(r);
+                continue;
+            }
+            if (lowAddr <= r.lo && highAddr >= r.hi) {
+                continue;
+            }
+            if (lowAddr > r.lo && highAddr < r.hi) {
+                next.push_back(FocusRange{r.lo, lowAddr - 1});
+                next.push_back(FocusRange{highAddr + 1, r.hi});
+                continue;
+            }
+            if (lowAddr <= r.lo && highAddr < r.hi) {
+                next.push_back(FocusRange{highAddr + 1, r.hi});
+                continue;
+            }
+            if (lowAddr > r.lo && highAddr >= r.hi) {
+                next.push_back(FocusRange{r.lo, lowAddr - 1});
+                continue;
+            }
+        }
+    }
+
+    std::atomic_store(&focus_ranges_, std::make_shared<const std::vector<FocusRange>>(std::move(next)));
+
+    pthread_mutex_unlock(&focus_write_mu_);
+}
+
+void GateManager::clearFocusRanges()
+{
+    pthread_mutex_lock(&focus_write_mu_);
+    std::atomic_store(&focus_ranges_, std::make_shared<const std::vector<FocusRange>>());
+    pthread_mutex_unlock(&focus_write_mu_);
+}
+
+void GateManager::setFocusRanges(const std::vector<FocusRange> &ranges)
+{
+    pthread_mutex_lock(&focus_write_mu_);
+    std::vector<FocusRange> sorted = ranges;
+    std::sort(sorted.begin(), sorted.end(), [](const FocusRange &a, const FocusRange &b) {
+        if (a.lo != b.lo) return a.lo < b.lo;
+        return a.hi < b.hi;
+    });
+    std::vector<FocusRange> merged;
+    for (const auto &r : sorted) {
+        if (merged.empty() || r.lo > merged.back().hi + 1) {
+            merged.push_back(r);
+        } else if (r.hi > merged.back().hi) {
+            merged.back().hi = r.hi;
+        }
+    }
+    std::atomic_store(&focus_ranges_, std::make_shared<const std::vector<FocusRange>>(std::move(merged)));
+    pthread_mutex_unlock(&focus_write_mu_);
+}
+
+std::vector<FocusRange> GateManager::getFocusRanges() const
+{
+    auto ranges = std::atomic_load(&focus_ranges_);
+    if (!ranges) {
+        return {};
+    }
+    return *ranges;
 }
 
 int GateManager::loadBreakpointsFromFile(unsigned vcpu, FILE *in) {
@@ -171,7 +290,8 @@ int GateManager::loadBreakpointsFromFile(unsigned vcpu, FILE *in) {
         if (!end || end == p) {
             continue;
         }
-        parsed.push_back(addr);
+        const uint64_t base = scallop_runtime_base();
+        parsed.push_back(base + addr);
     }
 
     if (!parsed.empty()) {

@@ -348,12 +348,14 @@ void SymbolResolver::sort_and_infer_ends_() {
 
 bool SymbolResolver::load(const std::string& elf_path, uint64_t runtime_base) {
     if (!parse_elf_(elf_path)) return false;
+    runtimeBase = runtime_base;
     load_bias_ = runtime_base - min_load_vaddr_;
     return true;
 }
 
 void SymbolResolver::set_runtime_base(uint64_t runtime_base) {
     load_bias_ = runtime_base - min_load_vaddr_;
+    runtimeBase = runtime_base;
     // invalidate cache
     last_runtime_pc_ = 0;
     last_idx_ = -1;

@@ -17,6 +17,8 @@ public:
         uint64_t    elf_pc = 0;       // runtime_pc - load_bias
     };
 
+    uint64_t runtimeBase = 0;
+    
     bool initialized = false;
 
     SymbolResolver() = default;
@@ -45,6 +47,8 @@ public:
 
     // Utility: number of loaded symbols
     size_t symbol_count() const { return syms_.size(); }
+
+    uint64_t getCurrentRuntimeBase() { return runtimeBase; } 
 
 private:
     struct SymRange {

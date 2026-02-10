@@ -12,6 +12,7 @@ enum class LastRunFunction {
     continueExec,
     dumpMemory,
     focusMemory,
+    defocusMemory,
 } lastRunFunction;
 
 void exitScallop() {
@@ -56,6 +57,12 @@ void focusMemory(uint64_t low, uint64_t high)  {
     lastRunArgs.clear();
 }
 
+void defocusMemory(uint64_t low, uint64_t high)  {
+    lastRunFunction = LastRunFunction::defocusMemory;
+    Emulator::defocusMemory(low, high);
+    lastRunArgs.clear();
+}
+
 void resetEmulator() {
     Emulator::startEmulation("", "");
 }
@@ -72,6 +79,9 @@ void runLastFunc() {
         dumpMemory();
         break;
     case LastRunFunction::focusMemory:
+        // We can ignore this to be honest
+        break;
+    case LastRunFunction::defocusMemory:
         // We can ignore this to be honest
         break;
     }
@@ -247,6 +257,19 @@ namespace ScallopUI
             ->check(CLI::PositiveNumber);    // or CLI::Range(1, 1'000'000)
         focusMem->callback([&](){
             focusMemory(low, high);
+        });
+
+        auto defocusMem = app.add_subcommand("defocus", "Remove a focused range");
+        defocusMem
+            ->add_option("low", low, "Low addr")
+            ->expected(1)
+            ->check(CLI::PositiveNumber);
+        defocusMem
+            ->add_option("high", high, "high addr")
+            ->expected(1)
+            ->check(CLI::PositiveNumber);
+        defocusMem->callback([&](){
+            defocusMemory(low, high);
         });
 
         auto dumpMem = app.add_subcommand("dump", "Dump memory");

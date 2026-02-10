@@ -30,6 +30,7 @@ namespace ScallopUI {
             std::filesystem::path lastBreakpointPath;
             std::filesystem::file_time_type lastBreakpointMtime{};
             bool lastBreakpointMtimeValid = false;
+            uint64_t lastBaseAddress = 0;
             AppStatePtr state_;
 
             void setBreakpoint(uint64_t address, bool enabled) {
@@ -138,6 +139,11 @@ namespace ScallopUI {
                 const int currentVcpu = Emulator::getSelectedVCPU();
                 const std::filesystem::path cfgPath = Emulator::getBreakpointConfigPath(currentVcpu);
                 bool configChanged = false;
+                const uint64_t baseAddress = Emulator::getRuntimeBaseAddress();
+                if (baseAddress != lastBaseAddress) {
+                    lastBaseAddress = baseAddress;
+                    configChanged = true;
+                }
                 if (cfgPath != lastBreakpointPath) {
                     lastBreakpointPath = cfgPath;
                     lastBreakpointMtimeValid = false;
@@ -185,7 +191,7 @@ namespace ScallopUI {
                 }
                 lastTotalLines = totalLines;
                 
-                auto header = hbox({text("  Disassembly View")}) | underlined | dim | bold | color(Color::CornflowerBlue);
+                auto header = hbox({text("  Disassembly View"), text("        Base Address:" + hex8ByteStr(Emulator::getRuntimeBaseAddress()))}) | underlined | dim | bold | color(Color::CornflowerBlue);
                 lines.push_back(header);
 
                 for (int r = 0; r < instructionCount; r++) {

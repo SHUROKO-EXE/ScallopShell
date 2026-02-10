@@ -47,7 +47,9 @@ enum class SCALLOP_REQUEST_TYPE {
     setMem,
     setReg,
     breakpoint,
-    deleteBreakpoint
+    deleteBreakpoint,
+    focusMem,
+    defocusMem
 };
 
 /**
@@ -211,6 +213,10 @@ public:
 extern ScallopState scallopstate;
 void ensure_binary_context_ready();
 void ensure_binary_configs_ready();
+std::filesystem::path scallop_config_dir();
+std::filesystem::path scallop_base_address_path();
+std::filesystem::path scallop_focus_ranges_path();
+uint64_t scallop_runtime_base();
 
 /**
  * For context: the purpose of this variable is to make sure that all 

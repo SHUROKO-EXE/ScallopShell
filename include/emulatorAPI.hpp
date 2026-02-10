@@ -105,6 +105,7 @@ public:
     static int deleteBreakpoint(uint64_t address);
     static std::filesystem::path getBreakpointConfigPath(int vcpuIndex = -1);
     static std::vector<uint64_t> getBreakpointsFromConfig(int vcpuIndex = -1);
+    static uint64_t getRuntimeBaseAddress();
 
     /**
      * Modify the memory from the address given until the address + n. 
@@ -124,6 +125,7 @@ public:
     static int flushStagedMemoryWrite();
 
     static int focusMemory(uint64_t lowAddress, uint64_t highAddress);
+    static int defocusMemory(uint64_t lowAddress, uint64_t highAddress);
 
     /**
      * Retrieve memory from an address

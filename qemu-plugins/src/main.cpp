@@ -14,6 +14,7 @@
 #include <chrono>
 #include <sys/stat.h>
 #include <cstdlib>
+#include <fstream>
 
 QEMU_PLUGIN_EXPORT int qemu_plugin_version = QEMU_PLUGIN_VERSION;
 int vcpu_current_thread_index = 0;
@@ -71,6 +72,9 @@ namespace
 
 namespace
 {
+    std::vector<FocusRange> read_focus_ranges_from_file();
+    void write_focus_ranges_to_file(const std::vector<FocusRange> &ranges);
+
     std::filesystem::path resolve_config_dir(const std::string &binary_stem)
     {
         const char *home = std::getenv("HOME");
@@ -164,6 +168,7 @@ namespace
                 scallopstate.g_config_mtime_valid[i] = true;
             }
         }
+        scallopstate.getGates().setFocusRanges(read_focus_ranges_from_file());
     }
 
     bool config_mtime_changed(unsigned vcpu)
@@ -194,6 +199,67 @@ namespace
             return true;
         }
         return false;
+    }
+
+    std::vector<FocusRange> read_focus_ranges_from_file()
+    {
+        std::vector<FocusRange> ranges;
+        const std::filesystem::path path = scallop_focus_ranges_path();
+        std::ifstream in(path);
+        if (!in.is_open()) {
+            return ranges;
+        }
+
+        const uint64_t base = scallop_runtime_base();
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.rfind("focus_ranges", 0) == 0) {
+                continue;
+            }
+            std::istringstream iss(line);
+            std::string a, b;
+            if (!(iss >> a >> b)) {
+                continue;
+            }
+            try {
+                size_t idx1 = 0;
+                size_t idx2 = 0;
+                uint64_t lo = std::stoull(a, &idx1, 0);
+                uint64_t hi = std::stoull(b, &idx2, 0);
+                if (idx1 == 0 || idx2 == 0) {
+                    continue;
+                }
+                ranges.push_back(FocusRange{base + lo, base + hi});
+            } catch (...) {
+                continue;
+            }
+        }
+        return ranges;
+    }
+
+    void write_focus_ranges_to_file(const std::vector<FocusRange> &ranges)
+    {
+        const std::filesystem::path path = scallop_focus_ranges_path();
+        FILE *f = fopen(path.c_str(), "w");
+        if (!f) {
+            debug("[focus] failed to open %s\n", path.c_str());
+            return;
+        }
+        fprintf(f, "focus_ranges\n");
+        const uint64_t base = scallop_runtime_base();
+        for (const auto &r : ranges) {
+            uint64_t lo = r.lo;
+            uint64_t hi = r.hi;
+            if (base != 0) {
+                if (lo >= base) lo -= base;
+                if (hi >= base) hi -= base;
+            }
+            fprintf(f, "0x%llx 0x%llx\n",
+                    static_cast<unsigned long long>(lo),
+                    static_cast<unsigned long long>(hi));
+        }
+        fflush(f);
+        fclose(f);
     }
 
     /**
@@ -241,6 +307,68 @@ namespace
         return normalized;
     }
 } // namespace
+
+std::filesystem::path scallop_config_dir()
+{
+    ensure_binary_context_ready();
+    if (!scallopstate.binary_ctx_ready.load(std::memory_order_relaxed)) {
+        return std::filesystem::temp_directory_path();
+    }
+    return resolve_config_dir(scallopstate.binary_name);
+}
+
+std::filesystem::path scallop_base_address_path()
+{
+    return scallop_config_dir() / "base_address.txt";
+}
+
+std::filesystem::path scallop_focus_ranges_path()
+{
+    return scallop_config_dir() / "focus_ranges.txt";
+}
+
+uint64_t scallop_runtime_base()
+{
+    uint64_t base = scallopstate.g_resolver.getCurrentRuntimeBase();
+    if (base != 0) {
+        return base;
+    }
+
+    ensure_binary_context_ready();
+    if (!scallopstate.binary_path.empty()) {
+        std::ifstream in("/proc/self/maps");
+        if (in.is_open()) {
+            std::string line;
+            uint64_t best = 0;
+            while (std::getline(in, line)) {
+                unsigned long long start = 0;
+                unsigned long long end = 0;
+                char perms[5] = {0};
+                char path_buf[512] = {0};
+                int parsed = std::sscanf(line.c_str(), "%llx-%llx %4s %*s %*s %*s %511s",
+                                         &start, &end, perms, path_buf);
+                if (parsed < 4) {
+                    continue;
+                }
+                std::string path = path_buf;
+                if (path.find(scallopstate.binary_path) == std::string::npos) {
+                    continue;
+                }
+                if (best == 0 || start < best) {
+                    best = static_cast<uint64_t>(start);
+                }
+            }
+            if (best != 0) {
+                scallopstate.g_resolver.set_runtime_base(best);
+                return best;
+            }
+        }
+    }
+
+    base = qemu_plugin_start_code();
+    scallopstate.g_resolver.set_runtime_base(base);
+    return base;
+}
 
 void ensure_binary_context_ready()
 {
@@ -359,6 +487,14 @@ SCALLOP_REQUEST_TYPE ScallopState::classifyRequest(const std::string &request) c
     if (starts_with("unbreak") || starts_with("delete break") || starts_with("del break"))
     {
         return SCALLOP_REQUEST_TYPE::deleteBreakpoint;
+    }
+    if (starts_with("defocus") || starts_with("unfocus"))
+    {
+        return SCALLOP_REQUEST_TYPE::defocusMem;
+    }
+    if (starts_with("focus") || normalized.find(';') != std::string::npos)
+    {
+        return SCALLOP_REQUEST_TYPE::focusMem;
     }
     return SCALLOP_REQUEST_TYPE::defaultReq;
 }
@@ -612,8 +748,14 @@ int ScallopState::update(int vcpu)
             (void)thread_id;
             (void)thread_name;
 
-            debug("%s ...... parsed val = %llx", req.getRequest().c_str(), addr);
-            scallopstate.getGates().addBreakpoint(addr, vcpu_id);
+            const uint64_t base = scallop_runtime_base();
+            const uint64_t runtime_addr = base + addr;
+            debug("%s ...... parsed val = %llx (base=%llx runtime=%llx)",
+                  req.getRequest().c_str(),
+                  static_cast<unsigned long long>(addr),
+                  static_cast<unsigned long long>(base),
+                  static_cast<unsigned long long>(runtime_addr));
+            scallopstate.getGates().addBreakpoint(runtime_addr, vcpu_id);
             break;
         }
         case SCALLOP_REQUEST_TYPE::deleteBreakpoint:
@@ -665,19 +807,83 @@ int ScallopState::update(int vcpu)
                 has_vcpu = true;
             }
 
-            debug("[breakpoints] delete req='%s' addr=%llx has_vcpu=%d vcpu=%d\n",
-                  req.getRequest().c_str(), addr, has_vcpu ? 1 : 0, vcpu_id);
+            const uint64_t base = scallop_runtime_base();
+            const uint64_t runtime_addr = base + addr;
+            debug("[breakpoints] delete req='%s' addr=%llx base=%llx runtime=%llx has_vcpu=%d vcpu=%d\n",
+                  req.getRequest().c_str(),
+                  static_cast<unsigned long long>(addr),
+                  static_cast<unsigned long long>(base),
+                  static_cast<unsigned long long>(runtime_addr),
+                  has_vcpu ? 1 : 0, vcpu_id);
             if (has_vcpu)
             {
-                scallopstate.getGates().deleteBreakpoint(addr, vcpu_id);
+                scallopstate.getGates().deleteBreakpoint(runtime_addr, vcpu_id);
             }
             else
             {
                 for (unsigned i = 0; i < MAX_VCPUS; i++)
                 {
-                    scallopstate.getGates().deleteBreakpoint(addr, static_cast<int>(i));
+                    scallopstate.getGates().deleteBreakpoint(runtime_addr, static_cast<int>(i));
                 }
             }
+            break;
+        }
+        case SCALLOP_REQUEST_TYPE::focusMem:
+        {
+            unsigned long long low = 0;
+            unsigned long long high = 0;
+            int vcpu_id = 0;
+            int thread_id = 0;
+            char thread_name[64];
+            std::string normalized = normalize_request(req.getRequest());
+            const char *s = normalized.c_str();
+            if (normalized.rfind("focus ", 0) == 0) {
+                s += 6;
+            }
+            if (sscanf(s, "%llu;%llu %d %d", &low, &high, &vcpu_id, &thread_id) != 4 &&
+                sscanf(s, "%llu;%llu %d %63s", &low, &high, &vcpu_id, thread_name) != 4)
+            {
+                break;
+            }
+            (void)vcpu_id;
+            (void)thread_id;
+            (void)thread_name;
+            if (low == 0 && high == 0) {
+                scallopstate.getGates().clearFocusRanges();
+            } else {
+                scallopstate.getGates().addFocusRange(static_cast<uint64_t>(low), static_cast<uint64_t>(high));
+            }
+            write_focus_ranges_to_file(scallopstate.getGates().getFocusRanges());
+            break;
+        }
+        case SCALLOP_REQUEST_TYPE::defocusMem:
+        {
+            unsigned long long low = 0;
+            unsigned long long high = 0;
+            int vcpu_id = 0;
+            int thread_id = 0;
+            char thread_name[64];
+            std::string normalized = normalize_request(req.getRequest());
+            const char *s = normalized.c_str();
+            if (normalized.rfind("defocus ", 0) == 0) {
+                s += 8;
+            } else if (normalized.rfind("unfocus ", 0) == 0) {
+                s += 8;
+            }
+            if (sscanf(s, "%llu;%llu %d %d", &low, &high, &vcpu_id, &thread_id) != 4 &&
+                sscanf(s, "%llu;%llu %d %63s", &low, &high, &vcpu_id, thread_name) != 4)
+            {
+                break;
+            }
+            (void)vcpu_id;
+            (void)thread_id;
+            (void)thread_name;
+            if (low == 0 && high == 0) {
+                scallopstate.getGates().clearFocusRanges();
+            } else {
+                scallopstate.getGates().removeFocusRange(static_cast<uint64_t>(low), static_cast<uint64_t>(high));
+            }
+            write_focus_ranges_to_file(scallopstate.getGates().getFocusRanges());
             break;
         }
         }

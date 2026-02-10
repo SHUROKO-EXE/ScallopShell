@@ -47,12 +47,19 @@ int setMem() {
     std::filesystem::path path = *scallopstate.g_mem_path ? scallopstate.g_mem_path : (std::filesystem::temp_directory_path() / "memdump.txt");
     FILE *f = fopen(path.c_str(), "r");
     if (f)
-    {   
-        // Scan the whole file in byte by byte
+    {
+        // Scan the file byte by byte, but never write more than requested.
         uint8_t byteFromFile = 0;
-        while (fscanf(f, " %hhx", &byteFromFile) == 1) {
+        size_t bytes_read = 0;
+        while (bytes_read < static_cast<size_t>(n) &&
+               fscanf(f, " %hhx", &byteFromFile) == 1)
+        {
             g_byte_array_append(buf, &byteFromFile, 1);
-            
+            bytes_read++;
+        }
+        if (bytes_read < static_cast<size_t>(n))
+        {
+            debug("[setmem] short read: wanted %d bytes, got %zu\n", n, bytes_read);
         }
         fclose(f);
     }

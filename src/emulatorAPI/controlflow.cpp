@@ -71,7 +71,16 @@ int Emulator::continueExec()
 int Emulator::focusMemory(uint64_t lowAddress, uint64_t highAddress)
 {
     std::string ret;
-    std::string cmd = std::to_string(lowAddress) + ';' + std::to_string(highAddress) +
+    std::string cmd = "focus " + std::to_string(lowAddress) + ';' + std::to_string(highAddress) +
+                      " " + std::to_string(selectedVCPU) + " " + selectedThread + '\n';
+    std::string exit = socket.sendCommand(cmd);
+    return 0;
+}
+
+int Emulator::defocusMemory(uint64_t lowAddress, uint64_t highAddress)
+{
+    std::string ret;
+    std::string cmd = "defocus " + std::to_string(lowAddress) + ';' + std::to_string(highAddress) +
                       " " + std::to_string(selectedVCPU) + " " + selectedThread + '\n';
     std::string exit = socket.sendCommand(cmd);
     return 0;

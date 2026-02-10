@@ -21,6 +21,11 @@ struct gate_t {
     pthread_mutex_t bp_write_mu; // serialize writers 
 };
 
+struct FocusRange {
+    uint64_t lo = 0;
+    uint64_t hi = 0;
+};
+
 class GateManager {
 public:
     GateManager();
@@ -31,6 +36,12 @@ public:
     void stepIfNeeded(unsigned vcpu, uint64_t steps);
     void waitIfNeeded(unsigned vcpu, uint64_t pc);
     void inRange(uint64_t lowAddr, uint64_t highAddr);
+    bool isInRange(uint64_t pc) const;
+    void addFocusRange(uint64_t lowAddr, uint64_t highAddr);
+    void removeFocusRange(uint64_t lowAddr, uint64_t highAddr);
+    void clearFocusRanges();
+    void setFocusRanges(const std::vector<FocusRange> &ranges);
+    std::vector<FocusRange> getFocusRanges() const;
 
     void give(unsigned vcpu, long tokens);
 
@@ -90,8 +101,8 @@ public:
 protected:
     gate_t gates_[MAX_VCPUS];
     std::atomic<int> logging_enabled_;
-    std::atomic<uintptr_t> filter_lo_;
-    std::atomic<uintptr_t> filter_hi_;
+    std::atomic<std::shared_ptr<const std::vector<FocusRange>>> focus_ranges_;
+    pthread_mutex_t focus_write_mu_;
 
     gate_t &gateFor(unsigned vcpu);
 };

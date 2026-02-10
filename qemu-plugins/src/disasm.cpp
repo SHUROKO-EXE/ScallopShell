@@ -14,6 +14,29 @@ uint64_t cur_pc = 0;
 std::atomic<unsigned long> g_exec_ticks = 0;
 std::atomic<unsigned long> g_last_pc = 0;
 
+static void write_base_address_file(uint64_t base)
+{
+    if (base == 0) {
+        return;
+    }
+    static uint64_t last_base = 0;
+    if (last_base == base) {
+        return;
+    }
+    const std::filesystem::path path = scallop_base_address_path();
+    FILE *f = fopen(path.c_str(), "w");
+    if (!f) {
+        debug("[base] failed to open %s\n", path.c_str());
+        return;
+    }
+    fprintf(f, "0x%llx\n", static_cast<unsigned long long>(base));
+    fflush(f);
+    fclose(f);
+    last_base = base;
+    debug("[base] wrote runtime base 0x%llx to %s\n",
+          static_cast<unsigned long long>(base), path.c_str());
+}
+
 /**
  * Disassemble a given qemu instruction with error handling.
  * @param insn Instruction to analyze.
@@ -124,6 +147,7 @@ static void log(unsigned int vcpu_index, void *udata)
             fprintf(stderr, "SymbolResolver init failed\n");
         }
         scallopstate.g_resolver.initialized = true;
+        write_base_address_file(scallop_runtime_base());
 
     }
 
@@ -132,6 +156,10 @@ static void log(unsigned int vcpu_index, void *udata)
     if (!ctx || !scallopstate.g_out[vcpu_index]) // If anything failed to initialize, ignore it
 
     {
+        return;
+    }
+
+    if (!scallopstate.getGates().isInRange(ctx->pc)) {
         return;
     }
 

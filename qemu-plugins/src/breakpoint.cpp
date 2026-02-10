@@ -24,8 +24,13 @@ namespace {
         }
         fseek(out, 0, SEEK_SET);
         fprintf(out, "breakpoint_addr\n");
+        const uint64_t base = scallop_runtime_base();
         for (uint64_t addr : breakpoints) {
-            fprintf(out, "0x%llx\n", static_cast<unsigned long long>(addr));
+            uint64_t offset = addr;
+            if (base != 0 && addr >= base) {
+                offset = addr - base;
+            }
+            fprintf(out, "0x%llx\n", static_cast<unsigned long long>(offset));
         }
         fflush(out);
         debug("[breakpoints] wrote %zu entries to config for vcpu=%u\n", breakpoints.size(), vcpu);

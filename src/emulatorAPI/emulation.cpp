@@ -6,6 +6,7 @@
 
 #else
 
+#include <sys/personality.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
@@ -124,17 +125,15 @@ int Emulator::startEmulation(const std::string &executablePathArg, const std::st
     std::filesystem::path pluginPath = ::getenv("SCALLOP_QEMU_PLUGIN") ? ::getenv("SCALLOP_QEMU_PLUGIN") : currentWorkingDir / "qemu-plugins";
     std::filesystem::path csvPath = std::filesystem::temp_directory_path() / "branchlog.csv";
 
-    // ---- build argv: qemu -d plugin -D /tmp/branchlog.csv -plugin <.so> -- <target> ----
-    std::vector<std::string> args_str = {
-        "setarch",
-        qemuArch,
-        "-R",
+    // ---- build argv: [setarch <arch> -R] qemu -d plugin -D /tmp/branchlog.csv -plugin <.so> -- <target> ----
+    std::vector<std::string> args_str;
+    args_str.insert(args_str.end(), {
         qemuPath.string(),
         "-d", "plugin",
         "-D", qemuTraceLog.string(),
         "-plugin", pluginPath.string(),
         "--",
-        executablePath};
+        executablePath});
 
     // Put everything in argv to prepare it for qemu
     std::vector<char *> argv;
