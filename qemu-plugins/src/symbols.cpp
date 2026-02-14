@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <limits>
 #include <string>
+#include <inttypes.h>
 
 #include <llvm/Demangle/Demangle.h>
 #include <llvm/Object/ObjectFile.h>
@@ -16,6 +17,85 @@ namespace {
 
 static std::string to_std_string(llvm::StringRef s) {
     return std::string(s.data(), s.size());
+}
+
+static void replace_all(std::string& s, const std::string& from, const std::string& to) {
+    if (from.empty()) return;
+    size_t pos = 0;
+    while ((pos = s.find(from, pos)) != std::string::npos) {
+        s.replace(pos, from.size(), to);
+        pos += to.size();
+    }
+}
+
+static bool is_hex_lower_string(const std::string& s) {
+    if (s.empty()) return false;
+    for (char c : s) {
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static std::string prettify_symbol_name(std::string name) {
+    // Rust mangling artifacts that survive demangle().
+    replace_all(name, "$LT$", "<");
+    replace_all(name, "$GT$", ">");
+    replace_all(name, "$LP$", "(");
+    replace_all(name, "$RP$", ")");
+    replace_all(name, "$C$", ",");
+    replace_all(name, "$u20$", " ");
+    replace_all(name, "..", "::");
+
+    // Strip Rust hash suffixes like ::h45490925b0e0941b.
+    const size_t hpos = name.rfind("::h");
+    if (hpos != std::string::npos) {
+        const std::string tail = name.substr(hpos + 3);
+        if (tail.size() >= 8 && tail.size() <= 32 && is_hex_lower_string(tail)) {
+            name.erase(hpos);
+        }
+    }
+    return name;
+}
+
+static std::string collapse_generic_arguments(std::string name) {
+    std::string out;
+    out.reserve(name.size());
+
+    int depth = 0;
+    bool emitted_ellipsis_for_group = false;
+
+    for (char c : name) {
+        if (c == '<') {
+            if (depth == 0) {
+                out.push_back('<');
+                out.append("...");
+                emitted_ellipsis_for_group = true;
+            }
+            depth++;
+            continue;
+        }
+        if (c == '>') {
+            if (depth > 0) {
+                depth--;
+                if (depth == 0) {
+                    out.push_back('>');
+                    emitted_ellipsis_for_group = false;
+                }
+                continue;
+            }
+        }
+
+        if (depth == 0) {
+            out.push_back(c);
+        } else if (!emitted_ellipsis_for_group) {
+            out.append("...");
+            emitted_ellipsis_for_group = true;
+        }
+    }
+
+    return out;
 }
 
 } // namespace
@@ -276,4 +356,41 @@ bool SymbolResolver::lookup(uint64_t runtime_pc, Hit& out_hit) const {
 
     uint64_t elf_pc = runtime_pc - load_bias_;
     return lookup_elf_pc_(elf_pc, out_hit);
+}
+
+std::string SymbolResolver::format_for_display(const Hit& hit) const {
+    if (!hit.name || hit.name[0] == '\0') {
+        return {};
+    }
+
+    std::string base = hit.name;
+    if (display_policy_enabled_.load(std::memory_order_relaxed)) {
+        base = prettify_symbol_name(std::move(base));
+        base = collapse_generic_arguments(std::move(base));
+    }
+
+    if (hit.offset == 0 || hide_symbol_offsets_.load(std::memory_order_relaxed)) {
+        return base;
+    }
+
+    char off[32];
+    snprintf(off, sizeof(off), "+0x%" PRIx64, hit.offset);
+    base += off;
+    return base;
+}
+
+void SymbolResolver::set_display_policy_enabled(bool enabled) {
+    display_policy_enabled_.store(enabled, std::memory_order_relaxed);
+}
+
+bool SymbolResolver::display_policy_enabled() const {
+    return display_policy_enabled_.load(std::memory_order_relaxed);
+}
+
+void SymbolResolver::set_hide_symbol_offsets(bool enabled) {
+    hide_symbol_offsets_.store(enabled, std::memory_order_relaxed);
+}
+
+bool SymbolResolver::hide_symbol_offsets() const {
+    return hide_symbol_offsets_.load(std::memory_order_relaxed);
 }

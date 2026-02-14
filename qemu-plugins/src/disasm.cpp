@@ -171,15 +171,7 @@ static void log(unsigned int vcpu_index, void *udata)
 
     SymbolResolver::Hit hit;
     if (scallopstate.g_resolver.lookup(ctx->pc, hit)) {
-        if (hit.name) {
-            if (hit.offset == 0) {
-                ctx->symbol = hit.name;
-            } else {
-                char tmp[256];
-                snprintf(tmp, sizeof(tmp), "%s+0x%" PRIx64, hit.name, hit.offset);
-                ctx->symbol = tmp;
-            }
-        }
+        ctx->symbol = scallopstate.g_resolver.format_for_display(hit);
     }
 
     //debug("rip = 0x%" PRIx64 "\n", ctx->pc);

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <atomic>
 #include <string>
 #include <vector>
 
@@ -45,6 +46,17 @@ public:
     // Look up runtime PC. Returns true if a symbol was found and fills out_hit.
     bool lookup(uint64_t runtime_pc, Hit& out_hit) const;
 
+    // Format symbol names for UI/log output according to display policy toggles.
+    std::string format_for_display(const Hit& hit) const;
+
+    // When enabled (default), apply readability policy to symbol names.
+    void set_display_policy_enabled(bool enabled);
+    bool display_policy_enabled() const;
+
+    // When enabled, suppress +0xoffset suffixes in formatted symbols (default: false).
+    void set_hide_symbol_offsets(bool enabled);
+    bool hide_symbol_offsets() const;
+
     // Utility: get current load bias (runtime_base - min_pt_load_vaddr)
     uint64_t load_bias() const { return load_bias_; }
 
@@ -85,4 +97,6 @@ private:
     // Hot cache (mutable so lookup can update it even if method is const)
     mutable uint64_t      last_runtime_pc_ = 0;
     mutable long          last_idx_ = -1;
+    std::atomic<bool>     display_policy_enabled_{true};
+    std::atomic<bool>     hide_symbol_offsets_{false};
 };
