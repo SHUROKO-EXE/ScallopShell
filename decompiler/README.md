@@ -43,8 +43,7 @@ Dependencies:
 
 Build:
 ```
-cmake -S . -B build
-cmake --build build -j
+sudo ./build.sh
 ```
 
 Run:
