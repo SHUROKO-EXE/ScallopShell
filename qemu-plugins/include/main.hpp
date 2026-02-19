@@ -53,7 +53,9 @@ enum class SCALLOP_REQUEST_TYPE {
 };
 
 /**
- * Enum with commands.
+ * Enum with commands that require arguments. Things that 
+ * involve gating / control flow don't need arguments due
+ * to directly being handled by scallopstate.update(). 
  */
 typedef enum : uint64_t {
     VCPU_OP_DUMP_REGS  = 1 << 1,
@@ -66,8 +68,14 @@ typedef enum : uint64_t {
 
 /**
  * This is where pending executions from requests are stored.
+ * The callee is required to cast the arguments array to the 
+ * right struct for the command. Memory safety is impossible 
+ * here: be EXTREMELY cautious as to not make the wrong cast.
+ * This will cause undefined behavior and break the program
+ * in runtime.
+ * 
  * There's 64 arguments for each bit in the flag. 64 possible
- * commands at the moment.
+ * commands.
  */
 struct vcpu_pending_ops {
     std::atomic_uint64_t flags;
@@ -80,6 +88,9 @@ struct vcpu_pending_ops {
     }
 };
 
+/**
+ * Struct which contains arguments for memory requests.
+ */
 struct scallop_mem_arguments{
 
     static constexpr int byteLength = 8;
@@ -88,7 +99,17 @@ struct scallop_mem_arguments{
     int mem_size;
     uint8_t mem_data[byteLength*numberOfRows];
 
-} ;
+};
+
+
+/**
+ * For context: the purpose of this variable is to make sure that all 
+ * threads have their own cpu index passed through to the functions they 
+ * call. This is due to the restriction of arguments in functions further
+ * down the call stack than the QEMU plugin callback. 
+ */
+extern int vcpu_current_thread_index; 
+
 
 /**
  * Requests
@@ -130,7 +151,6 @@ public:
     static char g_reg_path[256];
     static FILE *g_out[MAX_VCPUS];
     static FILE *binaryConfigs[MAX_VCPUS];
-    static int g_log_disas;
     static timespec g_config_mtime[MAX_VCPUS];
     static bool g_config_mtime_valid[MAX_VCPUS];
 
@@ -217,11 +237,3 @@ std::filesystem::path scallop_config_dir();
 std::filesystem::path scallop_base_address_path();
 std::filesystem::path scallop_focus_ranges_path();
 uint64_t scallop_runtime_base();
-
-/**
- * For context: the purpose of this variable is to make sure that all 
- * threads have their own cpu index passed through to the functions they 
- * call. This is due to the restriction of arguments in functions further
- * down the call stack than the QEMU plugin callback. 
- */
-extern int vcpu_current_thread_index; 

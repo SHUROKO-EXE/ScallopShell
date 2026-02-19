@@ -29,7 +29,17 @@ public:
     MinimalSocket::Port port() const { return bound_port_; }
 
 private:
+
+    /**
+     * Try to connect to the client, handoff to handleClient() 
+     * when successful. 
+     */
     void acceptLoop();
+
+    /**
+     * Handle client commands, enqueue in ScallopState. When client disconnects,
+     * exit the program on error. 
+     */
     void handleClient(MinimalSocket::tcp::TcpConnectionBlocking connection);
 
     ScallopState &state_;

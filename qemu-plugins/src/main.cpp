@@ -23,7 +23,6 @@ char ScallopState::g_mem_path[256] = {0};
 char ScallopState::g_reg_path[256] = {0};
 FILE *ScallopState::g_out[MAX_VCPUS] = {nullptr};
 FILE *ScallopState::binaryConfigs[MAX_VCPUS] = {nullptr};
-int ScallopState::g_log_disas = 0;
 timespec ScallopState::g_config_mtime[MAX_VCPUS] = {};
 bool ScallopState::g_config_mtime_valid[MAX_VCPUS] = {false};
 SymbolResolver ScallopState::g_resolver;
@@ -952,8 +951,6 @@ int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info, int argc, 
             outfile = argv[i] + 5;
         else if (!strncmp(argv[i], "out=", 4))
             outfile = argv[i] + 4;
-        else if (!strcmp(argv[i], "disas=1"))
-            scallopstate.g_log_disas = 1;
         else if (!strncmp(argv[i], "memfile=", 8))
             snprintf(scallopstate.g_mem_path, sizeof(scallopstate.g_mem_path), "%s", argv[i] + 8);
         else if (!strncmp(argv[i], "regfile=", 8))
@@ -981,9 +978,6 @@ int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info, int argc, 
 
     }
 
-    // Probably shouldnt hardcode this but whatever
-    scallopstate.g_log_disas = 1;
-
     // Debug
     fprintf(stderr, "[branchlog] plugin install OK (file=%s mem=%s reg=%s)\n",
             outfile ? outfile : "(stderr)", scallopstate.g_mem_path, scallopstate.g_reg_path);
@@ -991,7 +985,7 @@ int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info, int argc, 
 
     // Write CSV headers to all vcpu files
     for (unsigned i = 0; i < MAX_VCPUS; i++) {
-        fprintf(scallopstate.g_out[i], "pc,kind,branch_target,fallthrough,tb_vaddr,bytes%s,symbol\n", scallopstate.g_log_disas ? ",disas" : "");
+        fprintf(scallopstate.g_out[i], "pc,kind,branch_target,fallthrough,tb_vaddr,bytes,disas,symbol\n");
         fflush(scallopstate.g_out[i]);
     }
 
