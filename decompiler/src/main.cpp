@@ -3,20 +3,26 @@
 #include "filter.hpp"
 #include "unordered_map"
 #include "decompilerAPI.hpp"
+#include "CLI11.hpp"
 #include <cstdlib>
 
-int main() {
+int main(int argc, char** argv) {
+    CLI::App app{"Scallop Shell Decompiler"};
+    argv = app.ensure_utf8(argv);
+
+    std::string targetBinaryPath;
+    int vcpu = 0;
+    app.add_option("-f,--file", targetBinaryPath, "Target binary path")->required();
+    app.add_option("-v,--vcpu", vcpu, "VCPU index");
+    CLI11_PARSE(app, argc, argv);
 
     std::vector<instructionData> insns;
 
     std::filesystem::path fileInfoPath = std::filesystem::path("/tmp") / "scallop_file_info";
-    if (!std::filesystem::exists(fileInfoPath)) {
-        std::filesystem::path defaultElf =
-            std::filesystem::path(std::getenv("HOME")) / "Downloads" / "checkpass";
-        if (!writeTargetTripleFromElf(defaultElf, fileInfoPath)) {
-            std::cerr << "Failed to create " << fileInfoPath << std::endl;
-            return 1;
-        }
+
+    if (!writeTargetTripleFromElf(std::filesystem::path(targetBinaryPath), fileInfoPath)) {
+        std::cerr << "Failed to create " << fileInfoPath << " from " << targetBinaryPath << std::endl;
+        return 1;
     }
 
     std::string targetTriple;
@@ -28,7 +34,8 @@ int main() {
         return 1;
     }
 
-    std::filesystem::path branchlogPath = std::filesystem::temp_directory_path() / "branchlog.csv";
+    std::filesystem::path branchlogPath =
+        std::filesystem::temp_directory_path() / ("branchlog" + std::to_string(vcpu) + ".csv");
 
     std::ifstream branchlog(branchlogPath);
     std::string csvLine;
@@ -59,7 +66,7 @@ int main() {
             std::cout << "Wrote ELF to " << outPath << " (base=0x"
                       << std::hex << base << ", entry=0x" << entry << ")" << std::dec << std::endl;
 
-            const int rc = DecompilerAPI::runDecompiler(std::filesystem::path(std::getenv("HOME")) / "Applications" / "ghidra_11.4.1_PUBLIC" / "support" / "analyzeHeadless", outPath);
+            const int rc = DecompilerAPI::runDecompiler(std::filesystem::path(std::getenv("GHIDRA_DIR")) / "support" / "analyzeHeadless", outPath);
             if (rc != 0) {
                 std::cerr << "analyzeHeadless exited with code " << rc << std::endl;
             }

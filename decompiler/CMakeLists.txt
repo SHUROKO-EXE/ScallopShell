@@ -41,6 +41,7 @@ add_executable(scallop_decomp ${SCALLOP_DECOMP_SOURCES})
 target_include_directories(scallop_decomp PRIVATE
   ${CMAKE_SOURCE_DIR}/include
   ${CMAKE_SOURCE_DIR}/include/decompilerAPI
+  ${CMAKE_SOURCE_DIR}/../include
 )
 
 # --- Capstone ---

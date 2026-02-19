@@ -116,6 +116,7 @@ std::vector<uint8_t> buildMemoryImage(
     uint64_t min_pc = UINT64_MAX;
     uint64_t max_end = 0;
 
+    // Check all valid instructions to see what the memory range needs to be
     for (const auto& insn : insns) {
         if (insn.bytes.empty())
             continue;
@@ -130,6 +131,7 @@ std::vector<uint8_t> buildMemoryImage(
             max_end = end;
     }
 
+    // If an invalid range is defined, exit
     if (min_pc == UINT64_MAX || max_end <= min_pc) {
         base = 0;
         return {};
@@ -145,7 +147,7 @@ std::vector<uint8_t> buildMemoryImage(
             VariantChunk chunk{insn.pc, insn.bytes};
             uint64_t expected = insn.fallthroughAddr;
             size_t j = i;
-            while (j + 1 < insns.size()) {
+            while (chunk.bytes.size() < 5 && j + 1 < insns.size()) {
                 const auto& next = insns[j + 1];
                 if (next.bytes.empty() || next.pc != expected)
                     break;
@@ -153,8 +155,13 @@ std::vector<uint8_t> buildMemoryImage(
                 expected = next.fallthroughAddr;
                 ++j;
             }
-            by_pc[insn.pc].push_back(std::move(chunk));
-            i = j;
+            auto& variants = by_pc[insn.pc];
+            const bool exists = std::any_of(
+                variants.begin(), variants.end(),
+                [&](const VariantChunk& existing) { return existing.bytes == chunk.bytes; });
+            if (!exists) {
+                variants.push_back(std::move(chunk));
+            }
         }
 
         std::vector<VariantGroup> groups;
@@ -183,11 +190,11 @@ std::vector<uint8_t> buildMemoryImage(
         uint64_t pc;
         std::vector<uint64_t> variant_addrs;
         uint64_t counter_addr = 0;
+        uint64_t stub_addr = 0;
         std::vector<uint8_t> stub_bytes;
     };
 
-    uint64_t arena_base = max_end;
-    uint64_t arena_cursor = arena_base;
+    uint64_t arena_cursor = max_end;
     std::vector<SwitcherLayout> switchers;
     switchers.reserve(groups.size());
 
@@ -198,11 +205,6 @@ std::vector<uint8_t> buildMemoryImage(
         SwitcherLayout layout;
         layout.pc = group.pc;
         for (const auto& variant : group.variants) {
-            std::cout << "PC = " << (void*)layout.pc << "  Counter Addr " << (void*)layout.counter_addr << "   " << std::endl;
-            for (auto& j : layout.variant_addrs) {
-                std::cout << (void*)j;
-            }
-            std::cout << std::endl;
             layout.variant_addrs.push_back(arena_cursor);
             arena_cursor += variant.bytes.size();
         }
@@ -218,26 +220,55 @@ std::vector<uint8_t> buildMemoryImage(
         switchers[i].counter_addr = counters_base + i * 8;
     }
 
-    const uint64_t final_end = counters_base + switchers.size() * 8;
+    const uint64_t counters_end = counters_base + switchers.size() * 8;
+    uint64_t stub_cursor = counters_end;
+    for (auto& sw : switchers) {
+        sw.stub_addr = stub_cursor;
+        sw.stub_bytes = emitSwitcherStub(targetTriple, sw.stub_addr, sw.counter_addr,
+                                         sw.variant_addrs);
+        stub_cursor += sw.stub_bytes.size();
+    }
+    const uint64_t final_end = stub_cursor;
+
     if (dataStart)
         *dataStart = counters_base;
     if (dataEnd)
-        *dataEnd = final_end;
+        *dataEnd = counters_end;
+
     const uint64_t size = final_end - min_pc;
-    std::cout << size << std::endl;
     std::vector<uint8_t> image(static_cast<size_t>(size), pad);
     std::vector<uint8_t> occupied(static_cast<size_t>(original_size), 0);
 
-    for (auto& sw : switchers) {
-        sw.stub_bytes = emitSwitcherStub(targetTriple, sw.pc, sw.counter_addr,
-                                         sw.variant_addrs);
-        const uint64_t off = sw.pc - min_pc;
-        if (off + sw.stub_bytes.size() > image.size())
+    // Place full switcher logic out-of-line and only patch a near jump at the
+    // original PC to keep reconstructed code layout close to the original.
+    for (const auto& sw : switchers) {
+        const uint64_t stub_off = sw.stub_addr - min_pc;
+        if (stub_off + sw.stub_bytes.size() > image.size())
             continue;
         std::copy(sw.stub_bytes.begin(), sw.stub_bytes.end(),
-                  image.begin() + static_cast<size_t>(off));
+                  image.begin() + static_cast<size_t>(stub_off));
 
-        const uint64_t occ_end = std::min<uint64_t>(off + sw.stub_bytes.size(), original_size);
+        const uint64_t off = sw.pc - min_pc;
+        if (off + 5 > image.size())
+            continue;
+
+        const int64_t rel =
+            static_cast<int64_t>(sw.stub_addr) - static_cast<int64_t>(sw.pc + 5);
+        if (rel < INT32_MIN || rel > INT32_MAX) {
+            std::cerr << "Warning: switcher jump out of range at pc=0x"
+                      << std::hex << sw.pc << " -> 0x" << sw.stub_addr
+                      << std::dec << " (switcher skipped)" << std::endl;
+            continue;
+        }
+
+        image[static_cast<size_t>(off)] = 0xE9;
+        const uint32_t rel32 = static_cast<uint32_t>(rel);
+        image[static_cast<size_t>(off + 1)] = static_cast<uint8_t>(rel32 & 0xFF);
+        image[static_cast<size_t>(off + 2)] = static_cast<uint8_t>((rel32 >> 8) & 0xFF);
+        image[static_cast<size_t>(off + 3)] = static_cast<uint8_t>((rel32 >> 16) & 0xFF);
+        image[static_cast<size_t>(off + 4)] = static_cast<uint8_t>((rel32 >> 24) & 0xFF);
+
+        const uint64_t occ_end = std::min<uint64_t>(off + 5, original_size);
         for (uint64_t i = off; i < occ_end; ++i) {
             occupied[static_cast<size_t>(i)] = 1;
         }
@@ -272,7 +303,14 @@ std::vector<uint8_t> buildMemoryImage(
                 continue;
             std::vector<uint8_t> relocated = chunk.bytes;
             if (targetTriple.rfind("x86_64", 0) == 0) {
-                relocated = relocateX64Chunk(chunk.bytes, chunk.start_pc, dst);
+                try {
+                    relocated = relocateX64Chunk(chunk.bytes, chunk.start_pc, dst);
+                } catch (const std::exception& ex) {
+                    std::cerr << "Warning: relocation failed at pc=0x"
+                              << std::hex << chunk.start_pc << " -> 0x" << dst
+                              << std::dec << ": " << ex.what()
+                              << " (using original bytes)" << std::endl;
+                }
             }
             std::copy(relocated.begin(), relocated.end(),
                       image.begin() + static_cast<size_t>(off));
@@ -294,9 +332,16 @@ std::vector<uint8_t> buildMemoryImage(
             ElfSymbol sym{};
             sym.name = "switcher_" + std::to_string(sw.pc);
             sym.addr = sw.pc;
-            sym.size = sw.stub_bytes.size();
+            sym.size = 5;
             sym.isData = false;
             symbols->push_back(sym);
+
+            ElfSymbol body{};
+            body.name = "switcher_body_" + std::to_string(sw.pc);
+            body.addr = sw.stub_addr;
+            body.size = sw.stub_bytes.size();
+            body.isData = false;
+            symbols->push_back(body);
 
             ElfSymbol counter{};
             counter.name = "switcher_counter_" + std::to_string(sw.pc);
