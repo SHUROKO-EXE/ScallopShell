@@ -148,10 +148,11 @@ file(GLOB PLUGIN_C_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/*.c"
 )
 
-# C++ sources at top level and in src/
+# C++ sources at top level and under src/
 file(GLOB PLUGIN_CPP_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/**/*.cpp"
 )
 
 add_library(refactorscallop SHARED

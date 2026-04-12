@@ -32,4 +32,4 @@ cmake .. \
   -DQEMU_BUILD="$QEMU_BUILD_DIR"
 
 cmake --build .
-mv librefactorscallop.so ../scallop_plugin.so
+cp -f librefactorscallop.so ../scallop_plugin.so

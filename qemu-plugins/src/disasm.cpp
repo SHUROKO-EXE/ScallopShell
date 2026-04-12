@@ -181,9 +181,7 @@ static void log(unsigned int vcpu_index, void *udata)
     std::string bytes_hex = ctx->insn_bytes.empty()
                                 ? ""
                                 : bytes_to_hex(ctx->insn_bytes.data(), ctx->insn_bytes.size());
-    int written = 0;
-    if (scallopstate.g_log_disas) {
-        written = fprintf(scallopstate.g_out[vcpu_index], "0x%" PRIx64 ",%s,%s0x%" PRIx64 ",0x%" PRIx64 ",0x%" PRIx64 ",\"%s\",\"%s\",\"%s\"\n",
+    int written = fprintf(scallopstate.g_out[vcpu_index], "0x%" PRIx64 ",%s,%s0x%" PRIx64 ",0x%" PRIx64 ",0x%" PRIx64 ",\"%s\",\"%s\",\"%s\"\n",
                           ctx->pc,
                           ctx->kind.c_str(),
                           (ctx->branch_target ? "" : ""),
@@ -193,12 +191,6 @@ static void log(unsigned int vcpu_index, void *udata)
                           bytes_hex.c_str(),
                           ctx->disas.empty() ? "" : ctx->disas.c_str(),
                           ctx->symbol.c_str());
-    }
-    else {
-        written = fprintf(scallopstate.g_out[vcpu_index], "0x%" PRIx64 ",%s,%s0x%" PRIx64 ",0x%" PRIx64 ",0x%" PRIx64 ",\"%s\"\n",
-                          ctx->pc, ctx->kind.c_str(), (ctx->branch_target ? "" : ""), ctx->branch_target ? ctx->branch_target : 0,
-                          ctx->fallthrough, ctx->tb_vaddr, bytes_hex.c_str());
-    }
     if (written < 0)
     {
         debug("fprintf failed for pc=0x%" PRIx64 ": %s\n", ctx->pc, strerror(errno));

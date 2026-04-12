@@ -81,6 +81,15 @@ static std::vector<std::string> parse_csv(const std::string &line)
     return out;
 }
 
+static bool hasMinimumInstructionColumns(const std::vector<std::string>& cols)
+{
+    // Current branchlog rows can arrive in a few shapes:
+    // 6 columns: pc,kind,branch_target,fallthrough,tb_vaddr,bytes_or_disas
+    // 7 columns: pc,kind,branch_target,fallthrough,tb_vaddr,bytes,disas
+    // 8 columns: pc,kind,branch_target,fallthrough,tb_vaddr,bytes,disas,symbol
+    return cols.size() >= 6;
+}
+
 
 
 std::string Emulator::disassembleInstruction(uint64_t address,
@@ -140,7 +149,7 @@ static void updateLineIndex(std::ifstream& f, uintmax_t currentSize, VCPUIndexSt
         if (s.empty()) continue;
 
         auto cols = parse_csv(s);
-        if (cols.size() < 7) continue;
+        if (!hasMinimumInstructionColumns(cols)) continue;
 
         if (isDataLine(s)) {
             state.lineOffsets.push_back(lineStart);
@@ -165,9 +174,18 @@ static InstructionInfo parseLine(const std::string& line) {
     if (cols.size() >= 8) {
         dis = trim(cols[6]);
         symbol = trim(cols[7]);
+    } else if (cols.size() == 7) {
+        dis = trim(cols[6]);
+        symbol.clear();
+        if (dis.empty()) {
+            dis = trim(cols[5]);
+        }
+    } else if (cols.size() == 6) {
+        dis = trim(cols[5]);
+        symbol.clear();
     } else {
         dis.clear();
-        symbol = trim(cols.back());
+        symbol.clear();
     }
 
     if (disType.empty()) {
@@ -197,6 +215,7 @@ std::vector<InstructionInfo>* Emulator::getRunInstructions(
     int vcpuId = getSelectedVCPU();
     std::filesystem::path kCsvPath = std::filesystem::temp_directory_path() / ("branchlog" + std::to_string(vcpuId) + ".csv");
 
+    
     // Get or create per-VCPU state
     VCPUIndexState& state = vcpuIndexStates[vcpuId];
 
@@ -263,7 +282,7 @@ std::vector<InstructionInfo>* Emulator::getRunInstructions(
             if (s.empty()) continue;
 
             auto cols = parse_csv(s);
-            if (cols.size() < 7) continue;
+            if (!hasMinimumInstructionColumns(cols)) continue;
             if (!isDataLine(s)) continue;
 
             instructionInfo.push_back(parseLine(line));

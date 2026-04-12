@@ -26,6 +26,7 @@ FILE *ScallopState::binaryConfigs[MAX_VCPUS] = {nullptr};
 timespec ScallopState::g_config_mtime[MAX_VCPUS] = {};
 bool ScallopState::g_config_mtime_valid[MAX_VCPUS] = {false};
 SymbolResolver ScallopState::g_resolver;
+int ScallopState::g_log_disas;
 
 ScallopState scallopstate;
 
