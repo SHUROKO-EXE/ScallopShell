@@ -59,3 +59,13 @@ std::string readTargetTriple(const std::filesystem::path& infoPath);
 bool writeTargetTripleFromElf(
     const std::filesystem::path& elfPath,
     const std::filesystem::path& infoPath);
+
+    
+struct VariantChunk {
+    uint64_t start_pc;
+    std::vector<uint8_t> bytes;
+};
+struct VariantGroup {
+    uint64_t pc;
+    std::vector<VariantChunk> variants;
+};

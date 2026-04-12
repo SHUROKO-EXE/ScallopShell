@@ -88,7 +88,7 @@ struct scallop_mem_arguments{
     int mem_size;
     uint8_t mem_data[byteLength*numberOfRows];
 
-} ;
+};
 
 /**
  * Requests

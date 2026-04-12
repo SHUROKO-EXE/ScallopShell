@@ -17,11 +17,33 @@ if(NOT QEMU_BUILD)
     message(FATAL_ERROR "QEMU_BUILD is not set. Pass -DQEMU_BUILD=/path/to/qemu/build to CMake.")
 endif()
 
+if(NOT IS_DIRECTORY "${QEMU_SRC}")
+    message(FATAL_ERROR
+        "QEMU_SRC does not exist: ${QEMU_SRC}\n"
+        "Delete build/CMakeCache.txt or reconfigure with a valid -DQEMU_SRC path."
+    )
+endif()
+
+if(NOT IS_DIRECTORY "${QEMU_BUILD}")
+    message(FATAL_ERROR
+        "QEMU_BUILD does not exist: ${QEMU_BUILD}\n"
+        "Delete build/CMakeCache.txt or reconfigure with a valid -DQEMU_BUILD path."
+    )
+endif()
+
+if(NOT EXISTS "${QEMU_SRC}/include/qemu/qemu-plugin.h")
+    message(FATAL_ERROR
+        "Could not find QEMU plugin header at ${QEMU_SRC}/include/qemu/qemu-plugin.h.\n"
+        "Check that QEMU_SRC points at the QEMU source tree."
+    )
+endif()
+
 # === MinimalSocket via FetchContent ===
 include(FetchContent)
 
 # Disable MinimalSocket samples
 set(BUILD_MinimalCppSocket_SAMPLES OFF CACHE BOOL "" FORCE)
+set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "Disable FetchContent network updates" FORCE)
 
 FetchContent_Declare(
     min_sock

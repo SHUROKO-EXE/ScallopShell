@@ -60,13 +60,16 @@ static std::string bytes_to_hex(const uint8_t *data, size_t len)
     static const char kHex[] = "0123456789abcdef";
     std::string out;
     out.reserve(len * 2);
+    
     for (size_t i = 0; i < len; ++i)
     {
         unsigned char b = data[i];
         out.push_back(kHex[b >> 4]);
         out.push_back(kHex[b & 0x0f]);
     }
+
     return out;
+
 }
 
 /**
