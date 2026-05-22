@@ -4,8 +4,10 @@
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 
+#include <string>
+
 namespace ScallopUI {
 
-ftxui::Component AssemblerDisplay();
+ftxui::Component AssemblerDisplay(const std::string& arch);
 
 }
