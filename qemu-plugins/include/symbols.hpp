@@ -23,7 +23,7 @@ public:
 
     uint64_t runtimeBase = 0;
     
-    bool initialized = false;
+    std::atomic<bool> initialized{false};
 
     SymbolResolver() = default;
     ~SymbolResolver() = default;
@@ -39,6 +39,9 @@ public:
     // Load symbols from the program image and set runtime base for address translation.
     // Returns true on success (even if no symbols, it can still operate but lookups will miss).
     bool load(const std::string& elf_path, uint64_t runtime_base);
+
+    // Load symbols from a standalone GDB JSON export.
+    bool load_json(const std::string& json_path, uint64_t runtime_base);
 
     // Set / update bias without re-parsing symbols (useful if the same ELF loads at different base).
     void set_runtime_base(uint64_t runtime_base);
@@ -70,6 +73,9 @@ private:
         uint64_t start;   // image vaddr
         uint64_t end;     // image vaddr end
         std::string name;
+        std::string file;
+        uint32_t line = 0;
+        uint32_t column = 0;
         uint16_t shndx;   // section index for bounds inference
     };
 

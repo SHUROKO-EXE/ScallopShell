@@ -89,6 +89,111 @@ static void stopEmulation() {
     child_pid_ = -1;
 }
 
+static std::filesystem::path defaultSymbolJsonPath(const std::string &executablePath)
+{
+    std::string stem = std::filesystem::path(executablePath).stem().string();
+    if (stem.empty()) {
+        stem = "target";
+    }
+    return std::filesystem::temp_directory_path() / ("scallop_symbols_" + stem + ".json");
+}
+
+static std::filesystem::path symbolExporterPath(const std::filesystem::path &currentWorkingDir)
+{
+    if (const char *overridePath = ::getenv("SCALLOP_GDB_SYMBOL_EXPORTER")) {
+        if (*overridePath) {
+            return overridePath;
+        }
+    }
+
+    const std::filesystem::path rel = "tools/gdb-symbol-exporter/gdb_symbol_exporter.py";
+
+    std::vector<std::filesystem::path> candidates = {
+        currentWorkingDir / rel,
+        currentWorkingDir.parent_path() / rel,
+    };
+
+    std::error_code ec;
+    std::filesystem::path exePath = std::filesystem::read_symlink("/proc/self/exe", ec);
+    if (!ec && !exePath.empty()) {
+        candidates.push_back(exePath.parent_path() / rel);
+        candidates.push_back(exePath.parent_path().parent_path() / rel);
+    }
+
+    // Source-root relative to this translation unit
+    std::filesystem::path sourceRoot =
+        std::filesystem::path(__FILE__).parent_path().parent_path().parent_path();
+    candidates.push_back(sourceRoot / rel);
+
+    for (const auto &candidate : candidates) {
+        if (std::filesystem::exists(candidate)) {
+            return candidate;
+        }
+    }
+
+    return candidates.front();
+}
+
+static void generateSymbolJson(const std::string &executablePath,
+                               const std::filesystem::path &currentWorkingDir)
+{
+    if (executablePath.empty()) {
+        return;
+    }
+
+    const std::filesystem::path exporter = symbolExporterPath(currentWorkingDir);
+    if (!std::filesystem::exists(exporter)) {
+        fprintf(stderr, "[symbols] exporter not found at %s; plugin symbols will be disabled\n",
+                exporter.c_str());
+        return;
+    }
+
+    const std::filesystem::path output = defaultSymbolJsonPath(executablePath);
+    std::error_code ec;
+    std::filesystem::remove(output, ec);
+
+    std::vector<std::string> args = {
+        "python3",
+        exporter.string(),
+        "--binary",
+        executablePath,
+        "--output",
+        output.string(),
+    };
+
+    std::vector<char *> argv;
+    argv.reserve(args.size() + 1);
+    for (auto &arg : args) {
+        argv.push_back(const_cast<char *>(arg.c_str()));
+    }
+    argv.push_back(nullptr);
+
+    pid_t pid = ::fork();
+    if (pid < 0) {
+        perror("[symbols] fork");
+        return;
+    }
+    if (pid == 0) {
+        ::execvp(argv[0], argv.data());
+        perror("[symbols] exec python3");
+        _exit(127);
+    }
+
+    int status = 0;
+    if (::waitpid(pid, &status, 0) < 0) {
+        perror("[symbols] waitpid");
+        return;
+    }
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+        fprintf(stderr, "[symbols] exporter failed for %s; plugin symbols will be disabled\n",
+                executablePath.c_str());
+        std::filesystem::remove(output, ec);
+        return;
+    }
+
+    fprintf(stderr, "[symbols] wrote %s\n", output.c_str());
+}
+
 int Emulator::startEmulation(const std::string &executablePathArg, const std::string& arch, bool system)
 {
     static std::string executablePath = executablePathArg; // Path to the executable being debugged
@@ -124,6 +229,8 @@ int Emulator::startEmulation(const std::string &executablePathArg, const std::st
     std::filesystem::path qemuTraceLog = std::filesystem::temp_directory_path() / "qemu.log";
     std::filesystem::path pluginPath = ::getenv("SCALLOP_QEMU_PLUGIN") ? ::getenv("SCALLOP_QEMU_PLUGIN") : currentWorkingDir / "qemu-plugins" / "scallop_plugin.so";
     std::filesystem::path csvPath = std::filesystem::temp_directory_path() / "branchlog.csv";
+
+    generateSymbolJson(executablePath, ::getenv("SCALLOP_SOURCE"));
 
     // ---- build argv: [setarch <arch> -R] qemu -d plugin -D /tmp/branchlog.csv -plugin <.so> -- <target> ----
     std::vector<std::string> args_str;

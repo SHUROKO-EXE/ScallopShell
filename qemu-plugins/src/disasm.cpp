@@ -3,6 +3,7 @@
 #include <string.h>
 #include <errno.h>
 #include <fstream>
+#include <mutex>
 #include <vector>
 #include "main.hpp"
 #include "debug.hpp"
@@ -13,6 +14,7 @@
 uint64_t cur_pc = 0;
 std::atomic<unsigned long> g_exec_ticks = 0;
 std::atomic<unsigned long> g_last_pc = 0;
+static std::mutex g_symbol_init_mutex;
 
 static void write_base_address_file(uint64_t base)
 {
@@ -128,6 +130,43 @@ static int parse_imm_target(const char *d, uint64_t *out_target)
     return 0;
 }
 
+static void ensure_symbol_resolver_ready()
+{
+    if (scallopstate.g_resolver.initialized.load(std::memory_order_acquire)) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(g_symbol_init_mutex);
+    if (scallopstate.g_resolver.initialized.load(std::memory_order_relaxed)) {
+        return;
+    }
+
+    const uint64_t runtime_base = scallop_runtime_base();
+    bool loaded = false;
+
+    const bool explicit_symbol_json = !scallopstate.symbol_json_path.empty();
+    const std::filesystem::path symbol_json_path =
+        explicit_symbol_json ? std::filesystem::path(scallopstate.symbol_json_path)
+                             : scallop_default_symbol_json_path();
+    std::error_code ec;
+    if (std::filesystem::exists(symbol_json_path, ec)) {
+        loaded = scallopstate.g_resolver.load_json(symbol_json_path.string(), runtime_base);
+        if (!loaded) {
+            fprintf(stderr, "SymbolResolver JSON init failed for %s; symbols disabled\n",
+                    symbol_json_path.c_str());
+        }
+    } else if (explicit_symbol_json) {
+        fprintf(stderr, "SymbolResolver JSON file not found at %s; symbols disabled\n",
+                symbol_json_path.c_str());
+    } else {
+        fprintf(stderr, "SymbolResolver default JSON file not found at %s; symbols disabled\n",
+                symbol_json_path.c_str());
+    }
+
+    scallopstate.g_resolver.initialized.store(true, std::memory_order_release);
+    write_base_address_file(runtime_base);
+}
+
 struct exec_ctx
 {
     uint64_t pc, tb_vaddr, fallthrough, branch_target;
@@ -145,15 +184,7 @@ struct exec_ctx
 static void log(unsigned int vcpu_index, void *udata)
 {
 
-    if (scallopstate.g_resolver.initialized == false) {
-        if (!scallopstate.g_resolver.load(qemu_plugin_path_to_binary(), qemu_plugin_start_code())) {
-            fprintf(stderr, "SymbolResolver init failed\n");
-        }
-        scallopstate.g_resolver.initialized = true;
-        write_base_address_file(scallop_runtime_base());
-
-    }
-
+    ensure_symbol_resolver_ready();
 
     auto *ctx = static_cast<exec_ctx *>(udata);
     if (!ctx || !scallopstate.g_out[vcpu_index]) // If anything failed to initialize, ignore it

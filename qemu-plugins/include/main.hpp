@@ -136,6 +136,7 @@ public:
 
     std::string binary_path;
     std::string binary_name;
+    std::string symbol_json_path;
     std::atomic<bool> binary_ctx_ready{false};
     std::atomic<bool> binary_configs_ready{false};
 
@@ -216,6 +217,7 @@ void ensure_binary_configs_ready();
 std::filesystem::path scallop_config_dir();
 std::filesystem::path scallop_base_address_path();
 std::filesystem::path scallop_focus_ranges_path();
+std::filesystem::path scallop_default_symbol_json_path();
 uint64_t scallop_runtime_base();
 
 /**

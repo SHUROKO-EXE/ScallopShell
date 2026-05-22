@@ -327,6 +327,16 @@ std::filesystem::path scallop_focus_ranges_path()
     return scallop_config_dir() / "focus_ranges.txt";
 }
 
+std::filesystem::path scallop_default_symbol_json_path()
+{
+    ensure_binary_context_ready();
+    std::string stem = scallopstate.binary_name;
+    if (stem.empty()) {
+        stem = "target";
+    }
+    return std::filesystem::temp_directory_path() / ("scallop_symbols_" + stem + ".json");
+}
+
 uint64_t scallop_runtime_base()
 {
     uint64_t base = scallopstate.g_resolver.getCurrentRuntimeBase();
@@ -956,6 +966,10 @@ int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info, int argc, 
             snprintf(scallopstate.g_mem_path, sizeof(scallopstate.g_mem_path), "%s", argv[i] + 8);
         else if (!strncmp(argv[i], "regfile=", 8))
             snprintf(scallopstate.g_reg_path, sizeof(scallopstate.g_reg_path), "%s", argv[i] + 8);
+        else if (!strncmp(argv[i], "symbols_json=", 13))
+            scallopstate.symbol_json_path = argv[i] + 13;
+        else if (!strncmp(argv[i], "symbols=", 8))
+            scallopstate.symbol_json_path = argv[i] + 8;
     }
     if (!*scallopstate.g_mem_path) {
         std::filesystem::path path = std::filesystem::temp_directory_path() / "memdump.txt";
