@@ -28,12 +28,13 @@ namespace ScallopUI
             int lastOutputFd_ = -1;
             Component inputComponent_;
             bool findFD = false;
-            int watchedFd_ = -1;  // -1 means use default from Emulator
+            int watchedFd_ = -1; // -1 means use default from Emulator
+            int watchedFdDisplay_ = -1; // the fd number the user requested (for display)
 
             Impl()
             {
-                lines_.push_back("");  // Start with empty line
-                readBuffer_.resize(4096);  // Dynamic read buffer
+                lines_.push_back("");     // Start with empty line
+                readBuffer_.resize(4096); // Dynamic read buffer
 
                 // Create input component (always available, will check fd dynamically)
                 InputOption opt = InputOption::Default();
@@ -52,7 +53,8 @@ namespace ScallopUI
             void readFromFd()
             {
                 int outputFd = (watchedFd_ >= 0) ? watchedFd_ : Emulator::getOutputFd();
-                if (outputFd < 0) return;
+                if (outputFd < 0)
+                    return;
 
                 // Detect fd change (e.g., after reset) and clear output
                 if (outputFd != lastOutputFd_)
@@ -94,10 +96,11 @@ namespace ScallopUI
                 }
             }
 
-            void writeToFd(const std::string& data)
+            void writeToFd(const std::string &data)
             {
                 int inputFd = Emulator::getInputFd();
-                if (inputFd < 0) return;
+                if (inputFd < 0)
+                    return;
 
                 std::string toWrite = data + "\n";
                 ::write(inputFd, toWrite.c_str(), toWrite.size());
@@ -105,95 +108,134 @@ namespace ScallopUI
 
             bool Focusable() const override { return true; }
 
+            bool searchingNewFD(Event e)
+            {
+                // Backing out of the search 
+                if (e == Event::Escape)
+                {
+                    findFD = false;
+                    return true;
+                }
+                // New FD selected
+                if (e == Event::Return)
+                {
+                    // No FD inputted sets it back to default (STDOUT/STDERR)
+                    if (findFDBuffer_.empty())
+                    {
+                        // Reset to default
+                        if (watchedFd_ >= 0)
+                        {
+                            ::close(watchedFd_);
+                            watchedFd_ = -1;
+                            watchedFdDisplay_ = -1;
+                        }
+                    }
+                    else
+                    {
+                        pid_t pid = Emulator::getChildPid();
+
+                        if (pid > 0)
+                        {
+
+                            // Find the proc map for the instrumented binary and 
+                            int targetFd = std::stoi(findFDBuffer_);
+                            std::filesystem::path path = std::filesystem::path("/proc") / std::to_string(pid) / "fd" / std::to_string(targetFd);
+                            int fd = ::open(path.c_str(), O_RDONLY | O_NONBLOCK);
+
+                            // If it didn't fail, set watchedFd_ = fd.
+                            if (fd >= 0)
+                            {
+                                if (watchedFd_ >= 0)
+                                    ::close(watchedFd_);
+                                watchedFd_ = fd;
+                                watchedFdDisplay_ = targetFd;
+                                // Clear buffer on fd change
+                                lines_.clear();
+                                lines_.push_back("");
+                                currentLine_.clear();
+                                scrollOffset_ = 0;
+                                lastLineCount_ = 0;
+                                followTail_ = true;
+                            }
+                        }
+                    }
+                    findFD = false;
+                    return true;
+                }
+                if (e == Event::Backspace && !findFDBuffer_.empty())
+                {
+                    findFDBuffer_.pop_back();
+                    return true;
+                }
+                if (e.is_character())
+                {
+                    findFDBuffer_ += e.character();
+                    return true;
+                }
+                return true; // Consume all events in goto mode
+            }
+
             bool OnEvent(Event e) override
             {
                 // Hover-to-focus
-                if (e.is_mouse()) {
-                    const auto& m = e.mouse();
-                    if (renderBox_.Contain(m.x, m.y) && !Focused()) {
+                if (e.is_mouse())
+                {
+                    const auto &m = e.mouse();
+                    if (renderBox_.Contain(m.x, m.y) && !Focused())
+                    {
                         TakeFocus();
                     }
                 }
 
-                if (!Focused()) return false;
+                if (!Focused())
+                    return false;
 
                 int totalLines = static_cast<int>(lines_.size());
                 int maxScroll = std::max(0, totalLines - 1);
 
                 // Ctrl+F or '/' to enter goto mode (when focused and not editing)
-                if (Focused() && (e == Event::CtrlF || e == Event::Character('/'))) {
+                if (Focused() && (e == Event::CtrlF || e == Event::Character('/')))
+                {
                     findFD = true;
                     findFDBuffer_.clear();
                     return true;
                 }
 
                 // Handle goto mode input
-                if (findFD) {
-                    if (e == Event::Escape) {
-                        findFD = false;
-                        return true;
-                    }
-                    if (e == Event::Return) {
-                        if (findFDBuffer_.empty()) {
-                            // Reset to default
-                            if (watchedFd_ >= 0) {
-                                ::close(watchedFd_);
-                                watchedFd_ = -1;
-                            }
-                        } else {
-                            pid_t pid = Emulator::getChildPid();
-                            if (pid > 0) {
-                                int targetFd = std::stoi(findFDBuffer_);
-                                std::filesystem::path path = std::filesystem::path("/proc") / std::to_string(pid) / "fd" / std::to_string(targetFd);
-                                int fd = ::open(path.c_str(), O_RDONLY | O_NONBLOCK);
-                                if (fd >= 0) {
-                                    if (watchedFd_ >= 0) ::close(watchedFd_);
-                                    watchedFd_ = fd;
-                                    // Clear buffer on fd change
-                                    lines_.clear();
-                                    lines_.push_back("");
-                                    currentLine_.clear();
-                                    scrollOffset_ = 0;
-                                    lastLineCount_ = 0;
-                                    followTail_ = true;
-                                }
-                            }
-                        }
-                        findFD = false;
-                        return true;
-                    }
-                    if (e == Event::Backspace && !findFDBuffer_.empty()) {
-                        findFDBuffer_.pop_back();
-                        return true;
-                    }
-                    if (e.is_character()) {
-                        findFDBuffer_ += e.character();
-                        return true;
-                    }
-                    return true; // Consume all events in goto mode
+                if (findFD)
+                {
+                    return searchingNewFD(e);
                 }
 
                 // Handle scroll keys FIRST, before input component
                 if (e == Event::ArrowUp)
                 {
-                    if (scrollOffset_ > 0) scrollOffset_--;
+                    if (scrollOffset_ > 0)
+                        scrollOffset_--;
                     followTail_ = false;
                     return true;
                 }
                 if (e == Event::ArrowDown)
                 {
-                    if (scrollOffset_ < maxScroll) scrollOffset_++;
-                    if (scrollOffset_ >= maxScroll) followTail_ = true;
+                    if (scrollOffset_ < maxScroll)
+                        scrollOffset_++;
+                    if (scrollOffset_ >= maxScroll)
+                        followTail_ = true;
                     return true;
                 }
-                if (Focused() && e.mouse().button == ftxui::Mouse::WheelUp) {
-                    if (scrollOffset_ > 0) scrollOffset_--;
+                if (Focused() && e.mouse().button == ftxui::Mouse::WheelUp)
+                {
+                    if (scrollOffset_ > 0)
+                        scrollOffset_--;
                     followTail_ = false;
                     return true;
                 }
-                if (Focused() && e.mouse().button == ftxui::Mouse::WheelDown) {
-                    if (scrollOffset_ < maxScroll) scrollOffset_++;
-                    if (scrollOffset_ >= maxScroll) followTail_ = true;
+                if (Focused() && e.mouse().button == ftxui::Mouse::WheelDown)
+                {
+                    if (scrollOffset_ < maxScroll)
+                        scrollOffset_++;
+                    if (scrollOffset_ >= maxScroll)
+                        followTail_ = true;
                     return true;
                 }
                 if (e == Event::PageUp)
@@ -205,7 +247,8 @@ namespace ScallopUI
                 if (e == Event::PageDown)
                 {
                     scrollOffset_ = std::min(maxScroll, scrollOffset_ + 10);
-                    if (scrollOffset_ >= maxScroll) followTail_ = true;
+                    if (scrollOffset_ >= maxScroll)
+                        followTail_ = true;
                     return true;
                 }
                 if (e == Event::Home)
@@ -245,6 +288,7 @@ namespace ScallopUI
                 return false;
             }
 
+            // Handle UI rendering
             Element OnRender() override
             {
                 // Read any new data from fd
@@ -289,7 +333,7 @@ namespace ScallopUI
                 auto outputContent = vbox(std::move(displayLines)) | vscroll_indicator | frame | flex;
 
                 Elements mainContent;
-                mainContent.push_back(text(" I/O") | bold | dim);
+                mainContent.push_back(hbox(text(" I/O"), text("        FD = " + std::to_string(watchedFdDisplay_))) | bold | dim);
                 mainContent.push_back(separator());
                 mainContent.push_back(outputContent);
 
@@ -305,17 +349,18 @@ namespace ScallopUI
 
                 auto display = vbox(std::move(mainContent));
 
-
                 auto gotoBar = hbox({
                     text("   Watch FD: ") | bold | color(Color::Magenta),
                     text(findFDBuffer_) | color(Color::Magenta),
                     text("_") | blink | color(Color::Magenta),
-                    });
+                });
 
-                if (findFD) {
-                    display = vbox({display | border | reflect(renderBox_), gotoBar}) ;
+                if (findFD)
+                {
+                    display = vbox({display | border | reflect(renderBox_), gotoBar});
                 }
-                else {
+                else
+                {
                     display = display | border | reflect(renderBox_);
                 }
 
