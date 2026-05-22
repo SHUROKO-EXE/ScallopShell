@@ -708,7 +708,14 @@ bool SymbolResolver::load_json(const std::string& json_path, uint64_t runtime_ba
         load_bias_ = 0;
         runtimeBase = runtime_base;
     } else if (compute_min_load_vaddr_()) {
-        load_bias_ = runtime_base - min_load_vaddr_;
+        if (runtime_base >= min_load_vaddr_) {
+            load_bias_ = runtime_base - min_load_vaddr_;
+        } else {
+            // runtime_base (ELF segment base) is below min_load_vaddr_ (first
+            // section address): this is a non-PIE binary where static
+            // addresses already equal runtime addresses, so no adjustment.
+            load_bias_ = 0;
+        }
         runtimeBase = runtime_base;
     } else {
         load_bias_ = runtime_base;
