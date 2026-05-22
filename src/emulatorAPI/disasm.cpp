@@ -212,6 +212,7 @@ std::vector<InstructionInfo>* Emulator::getRunInstructions(
     bool* updated,
     int* total_lines_out
 ) {
+    static int lastVcpuID = getSelectedVCPU();
     int vcpuId = getSelectedVCPU();
     std::filesystem::path kCsvPath = std::filesystem::temp_directory_path() / ("branchlog" + std::to_string(vcpuId) + ".csv");
 
@@ -225,7 +226,7 @@ std::vector<InstructionInfo>* Emulator::getRunInstructions(
     if (ec) sz = 0;
 
     // Check if file changed (new data available)
-    const bool file_changed = (sz != state.cachedSize);
+    const bool file_changed = (sz != state.cachedSize) || (lastVcpuID != vcpuId);
     const bool request_unchanged = (state.cachedStart == start_line && state.cachedN == n);
 
     // Only skip if BOTH file unchanged AND request unchanged
