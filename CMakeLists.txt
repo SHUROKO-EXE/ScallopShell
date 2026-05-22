@@ -45,6 +45,26 @@ else()
   add_subdirectory(${MIN_SOCKET_SOURCE_DIR} ${CMAKE_BINARY_DIR}/_deps/min_sock-build EXCLUDE_FROM_ALL)
 endif()
 
+# --- Keystone ---
+set(KEYSTONE_SOURCE_DIR "${CMAKE_BINARY_DIR}/_deps/keystone-src")
+set(BUILD_LIBS_ONLY ON CACHE BOOL "Only build the Keystone library" FORCE)
+set(KEYSTONE_BUILD_STATIC_RUNTIME OFF CACHE BOOL "Do not force static runtime when embedding Keystone" FORCE)
+set(SCALLOP_KEYSTONE_INCLUDE_DIR "${KEYSTONE_SOURCE_DIR}/include")
+
+if (NOT EXISTS "${KEYSTONE_SOURCE_DIR}/CMakeLists.txt")
+  message(STATUS "Keystone not found — downloading...")
+  FetchContent_Declare(
+    keystone
+    GIT_REPOSITORY https://github.com/keystone-engine/keystone.git
+    GIT_TAG        0.9.2
+  )
+  FetchContent_MakeAvailable(keystone)
+  set(SCALLOP_KEYSTONE_INCLUDE_DIR "${keystone_SOURCE_DIR}/include")
+else()
+  message(STATUS "Using cached Keystone in ${KEYSTONE_SOURCE_DIR}")
+  add_subdirectory(${KEYSTONE_SOURCE_DIR} ${CMAKE_BINARY_DIR}/_deps/keystone-build EXCLUDE_FROM_ALL)
+endif()
+
 # Uncomment if you also want CLI11 (header-only)
 # FetchContent_Declare(
 #   CLI11
@@ -79,11 +99,15 @@ target_link_libraries(scallop PRIVATE
   ftxui::dom
   ftxui::screen
   ${CAPSTONE_LIB}
+  keystone
   MinimalSocket
   Threads::Threads
   util  # for openpty()
   # CLI11::CLI11      # uncomment if enabled CLI11 above
 )
+
+target_include_directories(scallop PRIVATE ${SCALLOP_KEYSTONE_INCLUDE_DIR})
+target_compile_definitions(scallop PRIVATE SCALLOP_HAS_KEYSTONE=1)
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(scallop PRIVATE -Wall -Wextra -Wpedantic)

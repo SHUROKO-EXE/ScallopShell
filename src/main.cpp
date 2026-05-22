@@ -21,6 +21,7 @@
 #include "registerdisplay.hpp"
 #include "iodisplay.hpp"
 #include "cpupicker.hpp"
+#include "assemblerdisplay.hpp"
 
 using namespace ftxui;
 
@@ -64,6 +65,7 @@ int main(int argc, char** argv) {
     state->ioOutput = ScallopUI::ioDisplay();
     state->disasm = ScallopUI::DisasmDisplay(state);
     state->cliInput = ScallopUI::InputCli();
+    state->assembler = ScallopUI::AssemblerDisplay();
 
     auto cli_history = ScallopUI::CliHistory();
 
@@ -89,8 +91,18 @@ int main(int argc, char** argv) {
 
     auto leftAndMiddle = ResizableSplitLeft(left_render, middle_render, &state->disasmSplitSize);
 
-    auto right_render = Renderer(state->registers, [&] {
-        return state->registers->Render();
+    auto right_tab_toggle = Toggle(&state->rightTabNames, &state->selectedRightTab);
+    auto right_tab_container = Container::Tab(
+        {state->registers, state->assembler},
+        &state->selectedRightTab
+    );
+    auto right_stack = Container::Vertical({right_tab_toggle, right_tab_container});
+    auto right_render = Renderer(right_stack, [&] {
+        return vbox({
+            right_tab_toggle->Render(),
+            separator(),
+            right_tab_container->Render(),
+        }) | border;
     });
 
     auto centerTop = ResizableSplitLeft(leftAndMiddle, right_render, &state->registerSplitSize);
@@ -140,7 +152,11 @@ int main(int argc, char** argv) {
                     state->focusPane(ScallopUI::AppState::Pane::Disasm);
                 }
             } else {
-                state->focusPane(ScallopUI::AppState::Pane::Registers);
+                if (state->selectedRightTab == 1) {
+                    state->focusPane(ScallopUI::AppState::Pane::Assembler);
+                } else {
+                    state->focusPane(ScallopUI::AppState::Pane::Registers);
+                }
             }
             // Don't consume the mouse event; children still need it.
             return false;

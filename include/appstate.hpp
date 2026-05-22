@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include <stack>
+#include <vector>
 
 namespace ScallopUI {
 
@@ -27,6 +28,8 @@ struct AppState {
     // ===== Tab/Pane state =====
     int selectedTab = 0;
     std::vector<std::string> tabNames = {"memory", "code", "notepad", "cpu"};
+    int selectedRightTab = 0;
+    std::vector<std::string> rightTabNames = {"registers", "assembler"};
 
     // ===== Split sizes (persisted across renders) =====
     int disasmSplitSize = 50;
@@ -65,7 +68,7 @@ struct AppState {
     }
 
     // ===== Focus tracking =====
-    enum class Pane { CLI, Disasm, Memory, Code, Registers, IO, Notes, CPU };
+    enum class Pane { CLI, Disasm, Memory, Code, Registers, IO, Notes, CPU, Assembler };
     Pane lastFocusedPane = Pane::CLI;
 
     // Store component refs for focus restoration after modal close
@@ -77,6 +80,7 @@ struct AppState {
     ftxui::Component ioOutput;
     ftxui::Component notes;
     ftxui::Component cpuPicker;
+    ftxui::Component assembler;
 
     ftxui::Component getPaneComponent(Pane p) {
         switch (p) {
@@ -88,6 +92,7 @@ struct AppState {
             case Pane::IO: return ioOutput;
             case Pane::Notes: return notes;
             case Pane::CPU: return cpuPicker;
+            case Pane::Assembler: return assembler;
         }
         return nullptr;
     }
