@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <filesystem>
+#include <sstream>
 #include <vector>
 #include <string>
 
@@ -25,11 +26,14 @@ namespace ScallopUI
             int scrollOffset_ = 0;
             bool followTail_ = true;
             int lastLineCount_ = 0;
-            int lastOutputFd_ = -1;
             Component inputComponent_;
-            bool findFD = false;
-            int watchedFd_ = -1; // -1 means use default from Emulator
-            int watchedFdDisplay_ = -1; // the fd number the user requested (for display)
+            bool findFDIn = false;
+            bool findFDOut = false;
+            std::vector<int> inputFds = {-1};           // -1 means use default from Emulator
+            std::vector<int> inputFdsDisplay_ = {-1};   // the fd number the user requested (for display)
+            std::vector<int> watchedFds_ = {-1};        // -1 means use default from Emulator
+            std::vector<int> watchedFdsDisplay_ = {-1}; // the fd number the user requested (for display)
+
 
             Impl()
             {
@@ -52,58 +56,58 @@ namespace ScallopUI
 
             void readFromFd()
             {
-                int outputFd = (watchedFd_ >= 0) ? watchedFd_ : Emulator::getOutputFd();
-                if (outputFd < 0)
-                    return;
+                for (auto watchedFd_: watchedFds_) {
 
-                // Detect fd change (e.g., after reset) and clear output
-                if (outputFd != lastOutputFd_)
-                {
-                    lines_.clear();
-                    lines_.push_back("");
-                    currentLine_.clear();
-                    scrollOffset_ = 0;
-                    lastLineCount_ = 0;
-                    followTail_ = true;
-                    lastOutputFd_ = outputFd;
-                }
+                    int outputFd = (watchedFd_ >= 0) ? watchedFd_ : Emulator::getOutputFd();
+                    if (outputFd < 0)
+                        continue;
 
-                ssize_t n;
+                    ssize_t n;
 
-                // Read all available data (non-blocking) using member buffer
-                while ((n = ::read(outputFd, readBuffer_.data(), readBuffer_.size() - 1)) > 0)
-                {
-                    readBuffer_[n] = '\0';
-
-                    // Process each character
-                    for (ssize_t i = 0; i < n; i++)
+                    // Read all available data (non-blocking) using member buffer
+                    while ((n = ::read(outputFd, readBuffer_.data(), readBuffer_.size() - 1)) > 0)
                     {
-                        char c = readBuffer_[i];
-                        if (c == '\n')
+                        readBuffer_[n] = '\0';
+
+                        // Process each character
+                        for (ssize_t i = 0; i < n; i++)
                         {
-                            lines_.push_back(currentLine_);
-                            currentLine_.clear();
-                        }
-                        else if (c == '\r')
-                        {
-                            // Ignore carriage returns
-                        }
-                        else
-                        {
-                            currentLine_ += c;
+                            char c = readBuffer_[i];
+                            if (c == '\n')
+                            {
+                                lines_.push_back(currentLine_);
+                                currentLine_.clear();
+                            }
+                            else if (c == '\r')
+                            {
+                                // Ignore carriage returns
+                            }
+                            else
+                            {
+                                currentLine_ += c;
+                            }
                         }
                     }
                 }
             }
 
-            void writeToFd(const std::string &data)
+            void writeToFd(std::string& data)
             {
-                int inputFd = Emulator::getInputFd();
-                if (inputFd < 0)
+                if (inputFds.size() < 1) {
+                    inputFds.clear();
+                    inputFds.emplace_back(Emulator::getInputFd());
                     return;
+                }
 
+                // Write input data to every file descriptor
                 std::string toWrite = data + "\n";
-                ::write(inputFd, toWrite.c_str(), toWrite.size());
+                for (int i = 0; i < inputFds.size(); i++) {
+                    int fdToWriteTo;
+                    if (inputFds.at(i) == -1) fdToWriteTo = Emulator::getInputFd();
+                    else fdToWriteTo = inputFds.at(i);
+                    ::write(fdToWriteTo, toWrite.c_str(), toWrite.size());
+                }
+                
             }
 
             bool Focusable() const override { return true; }
@@ -113,21 +117,44 @@ namespace ScallopUI
                 // Backing out of the search 
                 if (e == Event::Escape)
                 {
-                    findFD = false;
+                    findFDIn = false;
+                    findFDOut = false;
                     return true;
                 }
                 // New FD selected
                 if (e == Event::Return)
                 {
+
                     // No FD inputted sets it back to default (STDOUT/STDERR)
                     if (findFDBuffer_.empty())
                     {
-                        // Reset to default
-                        if (watchedFd_ >= 0)
-                        {
-                            ::close(watchedFd_);
-                            watchedFd_ = -1;
-                            watchedFdDisplay_ = -1;
+                        if (findFDIn) {
+                            for (auto watchedFd_: watchedFds_) {
+                                // Reset to default
+                                if (watchedFd_ >= 0)
+                                {
+                                    ::close(watchedFd_);
+                                }
+                            }
+                            
+                            watchedFds_.clear(); 
+                            watchedFds_.emplace_back(-1);
+                            watchedFdsDisplay_.clear();
+                            watchedFdsDisplay_.emplace_back(-1);
+                        }
+                        else if (findFDOut) {
+                            for (auto inputFd: inputFds) {
+                                // Reset to default
+                                if (inputFd >= 0)
+                                {
+                                    ::close(inputFd);
+                                }
+                            }
+
+                            inputFds.clear();
+                            inputFds.emplace_back(-1);
+                            inputFdsDisplay_.clear();
+                            inputFdsDisplay_.emplace_back(-1);
                         }
                     }
                     else
@@ -137,29 +164,59 @@ namespace ScallopUI
                         if (pid > 0)
                         {
 
-                            // Find the proc map for the instrumented binary and 
-                            int targetFd = std::stoi(findFDBuffer_);
-                            std::filesystem::path path = std::filesystem::path("/proc") / std::to_string(pid) / "fd" / std::to_string(targetFd);
-                            int fd = ::open(path.c_str(), O_RDONLY | O_NONBLOCK);
+                            if (findFDIn) {
+                                // Close all the previous FDs
+                                for (auto watchedFD: watchedFds_) {
+                                    ::close(watchedFD);
+                                }
 
-                            // If it didn't fail, set watchedFd_ = fd.
-                            if (fd >= 0)
-                            {
-                                if (watchedFd_ >= 0)
-                                    ::close(watchedFd_);
-                                watchedFd_ = fd;
-                                watchedFdDisplay_ = targetFd;
-                                // Clear buffer on fd change
-                                lines_.clear();
-                                lines_.push_back("");
-                                currentLine_.clear();
-                                scrollOffset_ = 0;
-                                lastLineCount_ = 0;
-                                followTail_ = true;
+                                watchedFds_.clear(); 
+                                watchedFdsDisplay_.clear(); 
                             }
+
+                            if (findFDOut) {
+                                // Close all the previous FDs
+                                for (auto inputFD: inputFds) {
+                                    ::close(inputFD);
+                                }
+
+                                inputFds.clear(); 
+                                inputFdsDisplay_.clear(); 
+                            }
+
+                            std::stringstream listOfFDs(findFDBuffer_);
+                            std::string targetFD;
+                        
+                            // Tokenizing w.r.t. space ' '
+                            while(std::getline(listOfFDs, targetFD, ' '))
+                            {
+                                
+                                // Find the proc map for the instrumented binary 
+                                std::filesystem::path path = std::filesystem::path("/proc") / std::to_string(pid) / "fd" / targetFD;
+
+                                int fd;
+
+                                if (findFDIn) {
+                                    fd = ::open(path.c_str(), O_RDONLY | O_NONBLOCK); // If watching output
+                                    watchedFds_.push_back(fd);
+                                    watchedFdsDisplay_.emplace_back(std::stoi(targetFD));
+                                }
+                                if (findFDOut) {
+                                    fd = ::open(path.c_str(), O_WRONLY | O_NONBLOCK); // If sending input
+                                    inputFds.push_back(fd);   
+                                    inputFdsDisplay_.emplace_back(std::stoi(targetFD));
+                                    
+                                }   
+                                
+                            }
+                            
                         }
                     }
-                    findFD = false;
+                    if (findFDIn) findFDIn = false;
+                    else if (findFDOut) findFDOut = false;
+
+                    findFDBuffer_.clear();
+
                     return true;
                 }
                 if (e == Event::Backspace && !findFDBuffer_.empty())
@@ -194,15 +251,21 @@ namespace ScallopUI
                 int maxScroll = std::max(0, totalLines - 1);
 
                 // Ctrl+F or '/' to enter goto mode (when focused and not editing)
-                if (Focused() && (e == Event::CtrlF || e == Event::Character('/')))
+                if (Focused() && (e == Event::CtrlF))
                 {
-                    findFD = true;
+    
+                    findFDIn = true;
+                    findFDBuffer_.clear();
+                    return true;
+                }
+                if (Focused() && (e == Event::CtrlAltF)) {
+                    findFDOut = true;
                     findFDBuffer_.clear();
                     return true;
                 }
 
                 // Handle goto mode input
-                if (findFD)
+                if (findFDIn || findFDOut)
                 {
                     return searchingNewFD(e);
                 }
@@ -333,7 +396,16 @@ namespace ScallopUI
                 auto outputContent = vbox(std::move(displayLines)) | vscroll_indicator | frame | flex;
 
                 Elements mainContent;
-                mainContent.push_back(hbox(text(" I/O"), text("        FD = " + std::to_string(watchedFdDisplay_))) | bold | dim);
+                
+                std::string fdOutList = "Out FDs = ";
+                for (auto fdToDisplay: watchedFdsDisplay_){
+                    fdOutList += std::to_string(fdToDisplay) + "  ";
+                }
+                std::string fdInList = "In FDs = ";
+                for (auto fdToDisplay: inputFdsDisplay_){
+                    fdInList += std::to_string(fdToDisplay) + "  ";
+                }
+                mainContent.push_back(hbox(text(" I/O"), text("        " + fdOutList), text("  |  "), text(fdInList)) | bold | dim);
                 mainContent.push_back(separator());
                 mainContent.push_back(outputContent);
 
@@ -349,15 +421,24 @@ namespace ScallopUI
 
                 auto display = vbox(std::move(mainContent));
 
-                auto gotoBar = hbox({
+                auto gotoWatchBar = hbox({
                     text("   Watch FD: ") | bold | color(Color::Magenta),
                     text(findFDBuffer_) | color(Color::Magenta),
                     text("_") | blink | color(Color::Magenta),
                 });
 
-                if (findFD)
+                auto gotoWriteBar = hbox({
+                    text("   Write To FD: ") | bold | color(Color::Magenta),
+                    text(findFDBuffer_) | color(Color::Magenta),
+                    text("_") | blink | color(Color::Magenta),
+                });
+
+                if (findFDIn)
                 {
-                    display = vbox({display | border | reflect(renderBox_), gotoBar});
+                    display = vbox({display | border | reflect(renderBox_), gotoWatchBar});
+                }
+                else if (findFDOut) {
+                    display = vbox({display | border | reflect(renderBox_), gotoWriteBar});
                 }
                 else
                 {
