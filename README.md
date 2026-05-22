@@ -3,8 +3,6 @@
 
 <img width="520" height="520" alt="pixil-frame-0(2)" src="https://github.com/user-attachments/assets/499ccef4-afb0-4c02-888e-1045d65894cb" />
 
-Alpha 1.1.0 
-
 ## Supported Platforms
 
 Linux, macOS in development
@@ -33,6 +31,7 @@ Build QEMU from source, make sure the TCG Plugin flags are set. Without this, th
 export QEMU_SRC_DIR= # Source directory for the custom QEMU build (only if building plugin from source!)
 export SCALLOP_QEMU_BUILD= # Build path of QEMU
 export SCALLOP_QEMU_PLUGIN= # Plugin path for scallop_plugin.so
+export SCALLOP_SOURCE= # High level directory for Scallop Shell (where this README is)
 ```
 ### To compile from source 
 
@@ -65,7 +64,7 @@ You can also just move it to your /usr/bin/. I don't see a downside to this.
  
 ## Controls
 
-The controls right now are not ideal. CtrlS will assign you to the CLI, CtrlA to the memory display, CtrlD the disassembly, CtrlI for the I/O display. If you want to patch the bytes in memory or code display, the display *must be selected*. This is indicated by the window being highlighted. Up and Down arrows do different things in different windows (CLI and I/O display the up arrow lets you go to the memory display, the other displays have scrolling instead). If you want to access the other tabs, you have to have the memory display selected, then press ShiftTab. Tab is not currently working. Again, sorry for any end users using this right now. The controls are bad and this will be improved. CtrlF will let you search memory in the memory display, and search for a specific file descriptor in the I/O display.  
+The controls right now subject to change. CtrlS will assign you to the CLI, CtrlA to the memory display, CtrlD the disassembly, CtrlI for the I/O display. If you want to patch the bytes in memory or code display, the display *must be selected*. This is indicated by the window being highlighted. Up and Down arrows do different things in different windows (CLI and I/O display the up arrow lets you go to the memory display, the other displays have scrolling instead). If you want to access the other tabs, you can click to change the window shown. 
 
 ## Live Patching
 
@@ -77,7 +76,7 @@ You can take notes on the Notepad tab about what you're working on. Ctrl+S to sa
 
 ## Debugging
 
-You can run "step N", with N being the amount of instructions you want to step (this can be left blank for a default of 1). the "focus" command will filter out all memory outside of the low and high argument you specify (for example, "focus 0x400000 0x500000" will only output the instructions inside that range). Hitting enter will run the last command. 
+You can run "step N", with N being the amount of instructions you want to step (this can be left blank for a default of 1). the "focus" command will filter out all memory outside of the low and high argument you specify (for example, "focus 0x400000 0x500000" will only output the instructions inside that range). Hitting enter will run the last command. Currently, all instructions executed outside of the binary range are ignored. This leaves things like mmap() with executable memory unhandled by Scallop Shell. This will be fixed in a later version. 
 
 Scallop Shell shows you the instruction right before it runs. So if you want to patch anything before it runs it'll let you. 
 
@@ -87,10 +86,19 @@ Break anywhere you want by putting "break 0x" , followed by the instruction to b
 ```
 break 0x400360
 ```
+You can also point and click the squares to the left of the disassembled instructions to toggle a breakpoint
 
-## Instruction filtering
+## File I/O Watching / Writing
 
-Currently, all instructions executed outside of the binary range are ignored. This leaves things like mmap() with executable memory unhandled by Scallop Shell. This will be fixed in a later version. 
+You can monitor all File I/O done by the target binary through the bottom right tab, titled I/O. CtrlF lets you watch what the binary is outputting through selected file descriptors, CtrlAltF lets you send your own data through to a different selection of file descriptors. 
+
+## Built in Assembler
+
+There is a built in assembler to make code injection much easier. It is located on the right window. By default the target binary's architecture (if supported by Keystone) is selected, but you can select it to be any language supported and also toggle Endianness and syntax (Intel vs AT&T). 
+
+## Multithreaded Debugging
+
+You can select different active vCPUs and threads and instrument them seperately on the CPU tab. Switching between them lets you step through one without touching the other, and swapping back. 
 
 ## Decompilation
 
