@@ -4,7 +4,22 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <cstring>
+#include <sstream>
+#include <string>
+
+namespace {
+    BreakpointKind parseBreakpointKind(const std::string &kind) {
+        if (kind == "script") {
+            return BreakpointKind::Script;
+        }
+        if (kind == "patch") {
+            return BreakpointKind::Patch;
+        }
+        return BreakpointKind::Stop;
+    }
+}
 
 GateManager::GateManager()
     : logging_enabled_(1),
@@ -16,9 +31,7 @@ GateManager::GateManager()
         pthread_cond_init(&gate.cv, nullptr);
 
         pthread_mutex_init(&gate.bp_write_mu, nullptr);
-        std::atomic_store(&gate.bp_vec, std::make_shared<const std::vector<uint64_t>>());
-
-
+        gate.bp_vec.store(std::make_shared<const BreakpointTable>(), std::memory_order_release);
     }
     pthread_mutex_init(&focus_write_mu_, nullptr);
 }
@@ -82,31 +95,41 @@ void GateManager::waitIfNeeded(unsigned vcpu, uint64_t pc) {
       (int)gate.running.load(std::memory_order_relaxed));
 
 
-    debug("vcpu = %d", vcpu);
-    debug(", %llx = pc,   is break = %d\n", pc, isBreakpoint(pc, gate));
-    if (isBreakpoint(pc, gate)) {
-        /*for (;;) {
-            if (gate.running.load(std::memory_order_relaxed)) {
+    auto breakpoint = findBreakpoint(pc, gate);
+    debug("vcpu = %u", vcpu);
+    debug(", %llx = pc,   is break = %d\n",
+          static_cast<unsigned long long>(pc),
+          breakpoint.has_value() ? 1 : 0);
+
+    const bool hit_breakpoint = breakpoint.has_value();
+    if (breakpoint) {
+        int action_result = 0;
+        switch (breakpoint->kind) {
+            case BreakpointKind::Stop:
+                pauseAll();
                 break;
-            }
-            long tokens = gate.tokens.load(std::memory_order_relaxed);
-            if (tokens > 0) {
-                gate.tokens.fetch_sub(1, std::memory_order_relaxed);
+            case BreakpointKind::Script:
+                action_result = runBreakpointScript(*breakpoint, vcpu, pc);
+                if (breakpoint->stop_after) pauseAll();
                 break;
-            }
-            pthread_cond_wait(&gate.cv, &gate.mu);
-        }*/
-        debug("8490482309483290432904324u320942\n");
-        pauseAll();
-    
-        //return;
+            case BreakpointKind::Patch:
+                action_result = applyBreakpointPatch(*breakpoint);
+                if (breakpoint->stop_after) pauseAll();
+                break;
+        }
+        if (action_result != 0) {
+            debug("[breakpoints] action failed at pc=0x%llx kind=%d rc=%d\n",
+                  static_cast<unsigned long long>(pc),
+                  static_cast<int>(breakpoint->kind),
+                  action_result);
+        }
     }
 
     if (gate.running.load(std::memory_order_relaxed)) {
         return;
     }
 
-    if (!isInRange(pc)) {
+    if (!hit_breakpoint && !isInRange(pc)) {
         return;
     }
 
@@ -261,7 +284,7 @@ int GateManager::loadBreakpointsFromFile(unsigned vcpu, FILE *in) {
     }
 
     gate_t &gate = gateFor(vcpu);
-    std::vector<uint64_t> parsed;
+    BreakpointTable parsed;
     char line[256];
 
     if (fseek(in, 0, SEEK_SET) != 0) {
@@ -270,37 +293,61 @@ int GateManager::loadBreakpointsFromFile(unsigned vcpu, FILE *in) {
 
     bool first_line = true;
     while (fgets(line, sizeof(line), in)) {
-        if (first_line) {
+        std::istringstream iss(line);
+        std::string addr_token;
+        if (!(iss >> addr_token)) {
+            continue;
+        }
+
+        if (first_line && addr_token == "breakpoint_addr") {
             first_line = false;
-            if (strncmp(line, "breakpoint_addr", 15) == 0) {
-                continue;
-            }
+            continue;
         }
+        first_line = false;
 
-        char *p = line;
-        while (*p && std::isspace(static_cast<unsigned char>(*p))) {
-            ++p;
-        }
-        if (*p == '\0') {
+        char *addr_end = nullptr;
+        uint64_t addr = std::strtoull(addr_token.c_str(), &addr_end, 0);
+        if (!addr_end || *addr_end != '\0') {
             continue;
         }
 
-        char *end = nullptr;
-        uint64_t addr = std::strtoull(p, &end, 0);
-        if (!end || end == p) {
-            continue;
-        }
         const uint64_t base = scallop_runtime_base();
-        parsed.push_back(base + addr);
+        BreakpointSpec breakpoint;
+        breakpoint.address = base + addr;
+
+        std::string kind;
+        int autopatch = 0;
+        int stop_after = 0;
+        if (iss >> kind) {
+            breakpoint.kind = parseBreakpointKind(kind);
+        }
+        if (iss >> autopatch) {
+            breakpoint.autopatch = autopatch != 0;
+        }
+        if (iss >> stop_after) {
+            breakpoint.stop_after = stop_after != 0;
+        }
+        std::getline(iss >> std::ws, breakpoint.script_path);
+
+        parsed.push_back(breakpoint);
     }
 
     if (!parsed.empty()) {
-        std::sort(parsed.begin(), parsed.end());
-        parsed.erase(std::unique(parsed.begin(), parsed.end()), parsed.end());
+        std::sort(parsed.begin(), parsed.end(), [](const BreakpointSpec &lhs, const BreakpointSpec &rhs) {
+            return lhs.address < rhs.address;
+        });
+        parsed.erase(
+            std::unique(
+                parsed.begin(),
+                parsed.end(),
+                [](const BreakpointSpec &lhs, const BreakpointSpec &rhs) {
+                    return lhs.address == rhs.address;
+                }),
+            parsed.end());
     }
 
     pthread_mutex_lock(&gate.bp_write_mu);
-    std::atomic_store(&gate.bp_vec, std::make_shared<const std::vector<uint64_t>>(std::move(parsed)));
+    gate.bp_vec.store(std::make_shared<const BreakpointTable>(std::move(parsed)), std::memory_order_release);
     pthread_mutex_unlock(&gate.bp_write_mu);
 
     return 0;

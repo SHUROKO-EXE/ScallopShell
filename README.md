@@ -102,7 +102,7 @@ You can select different active vCPUs and threads and instrument them seperately
 
 ## Decompilation
 
-Currently very experimental. It reconstructs the binary from the runtime instruction dump CSV, only with the instructions that have been run. This *DOES NOT YET* work for self modifying binaries: it preserves the first instruction that is run at a certain address, making this completely useless until it's supported. The theory is there and the implementation is planned. For now, please use standard reverse engineering workflows. Development on the decompiler is dynamic, and constant changes will occur until it is at a working stage.
+Currently very experimental. It reconstructs the binary from the runtime instruction dump CSV, only with the instructions that have been run. The theory is there and the implementation is buggy. For now, please use standard reverse engineering workflows. Development on the decompiler is dynamic, and constant changes will occur until it is at a working stage.
 
 ## License
 

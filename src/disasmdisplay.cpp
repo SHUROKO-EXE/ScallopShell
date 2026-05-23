@@ -37,8 +37,9 @@ namespace ScallopUI {
                 if (enabled) {
                     // Only send to the backend when the breakpoint is newly enabled.
                     if (!breakpoints.contains(address)) {
-                        std::string comment;
-                        Emulator::addBreakpoint(address, comment);
+                        std::string pythonScriptPath = "/home/bradley/fah.py";
+                        
+                        Emulator::addBreakpoint(address, true, pythonScriptPath);
                     }
                     breakpoints.insert(address);
                     return;

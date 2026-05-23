@@ -30,9 +30,9 @@ void step(int n = 1)
     lastRunArgs.emplace_back(n);
 }
 
-void breakpoint(uint64_t addr) {
+void breakpoint(uint64_t addr, bool autopatch, std::string pythonScriptPath) {
     static std::string random = "";
-    Emulator::addBreakpoint(addr, random);
+    Emulator::addBreakpoint(addr, autopatch, pythonScriptPath);
 }
 
 void deleteBreakpoint(uint64_t addr) {
@@ -245,7 +245,7 @@ namespace ScallopUI
         continCmd->callback(continueExec);
 
 
-        uint64_t low, high;
+        static uint64_t low, high;
         auto focusMem = app.add_subcommand("focus", "Filter out all code outside of this range");
         focusMem
             ->add_option("low", low, "Low addr")
@@ -281,17 +281,19 @@ namespace ScallopUI
         auto exitCall = app.add_subcommand("exit");
         exitCall->callback(exitScallop);
 
-        std::string breakAddrStr;
-        std::string unbreakAddrStr;
+        static std::string breakAddrStr;
+        static std::string breakPythonScript;
+        static std::string breakAutopatch;
+        static std::string unbreakAddrStr;
 
         auto breakAt = app.add_subcommand("break", "Add a breakpoint");
         breakAt->add_option("addr", breakAddrStr, "Address (decimal or 0x...)")
             ->required();
+        breakAt->add_option("autopatch", breakAutopatch, "Should this autopatch current queued memory? (0 no, 1 yes)");
+        breakAt->add_option("pythonScriptPath", breakPythonScript, "Path to Python Script to execute at the breakpoint");
 
         breakAt->callback([&](){
 
-            //std::cerr << "breakAddr currently = " << breakAddrStr << "\n";
-           
             uint64_t addr = 0;
             try {
                 size_t idx = 0;
@@ -311,10 +313,8 @@ namespace ScallopUI
             } catch (...) {
                 throw CLI::ValidationError("addr", "Invalid address: " + breakAddrStr);
             }
-            
-            //std::cerr << "breakAddr currently = " << addr << "\n";
-           
-            breakpoint(addr);
+        
+            breakpoint(addr, breakAutopatch == "1" ? 1 : 0, breakPythonScript);
         });
         // 0x7f4d0c6be3d4
 

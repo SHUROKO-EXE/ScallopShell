@@ -744,28 +744,55 @@ int ScallopState::update(int vcpu)
         }
         case SCALLOP_REQUEST_TYPE::breakpoint:
         {
-            uint64_t addr;
-            int vcpu_id;
-            int thread_id;
-            char thread_name[64];
+            const std::string raw_request = req.getRequest();
+            std::istringstream iss(raw_request);
+            std::string command;
+            std::string addr_token;
+            std::string thread_token;
+            std::string script_path;
+            int vcpu_id = -1;
+            int autopatch = 0;
 
-            // Read the request arguments from the req
-            if (sscanf(req.getRequest().c_str(), "break 0x%llx %d %d", &addr, &vcpu_id, &thread_id) != 3 &&
-                sscanf(req.getRequest().c_str(), "break 0x%llx %d %63s", &addr, &vcpu_id, thread_name) != 3)
+            if (!(iss >> command >> addr_token >> vcpu_id >> thread_token))
             {
+                debug("[breakpoints] add parse failed: %s\n", raw_request.c_str());
                 break;
             }
-            (void)thread_id;
-            (void)thread_name;
+            (void)command;
+
+            char *addr_end = nullptr;
+            uint64_t addr = std::strtoull(addr_token.c_str(), &addr_end, 0);
+            if (!addr_end || *addr_end != '\0')
+            {
+                debug("[breakpoints] add invalid addr: %s\n", addr_token.c_str());
+                break;
+            }
+
+            if (iss >> autopatch)
+            {
+                std::getline(iss >> std::ws, script_path);
+            }
 
             const uint64_t base = scallop_runtime_base();
             const uint64_t runtime_addr = base + addr;
-            debug("%s ...... parsed val = %llx (base=%llx runtime=%llx)",
-                  req.getRequest().c_str(),
+            BreakpointSpec breakpoint;
+            breakpoint.address = runtime_addr;
+            breakpoint.autopatch = autopatch != 0;
+            breakpoint.script_path = script_path;
+            breakpoint.kind = breakpoint.script_path.empty()
+                ? BreakpointKind::Stop
+                : BreakpointKind::Script;
+
+            debug("[breakpoints] add req='%s' addr=%llx base=%llx runtime=%llx vcpu=%d thread=%s autopatch=%d script='%s'\n",
+                  raw_request.c_str(),
                   static_cast<unsigned long long>(addr),
                   static_cast<unsigned long long>(base),
-                  static_cast<unsigned long long>(runtime_addr));
-            scallopstate.getGates().addBreakpoint(runtime_addr, vcpu_id);
+                  static_cast<unsigned long long>(runtime_addr),
+                  vcpu_id,
+                  thread_token.c_str(),
+                  breakpoint.autopatch ? 1 : 0,
+                  breakpoint.script_path.c_str());
+            scallopstate.getGates().addBreakpoint(breakpoint, vcpu_id);
             break;
         }
         case SCALLOP_REQUEST_TYPE::deleteBreakpoint:

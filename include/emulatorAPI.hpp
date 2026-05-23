@@ -101,7 +101,7 @@ public:
      */
     static int startEmulation(const std::string& executablePath, const std::string& arch, bool system = false);
 
-    static int addBreakpoint(uint64_t address, std::string& comment);
+    static int addBreakpoint(uint64_t address, bool autopatch, std::string& pythonScriptPath);
     static int deleteBreakpoint(uint64_t address);
     static std::filesystem::path getBreakpointConfigPath(int vcpuIndex = -1);
     static std::vector<uint64_t> getBreakpointsFromConfig(int vcpuIndex = -1);

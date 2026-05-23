@@ -1,13 +1,13 @@
 #pragma once
 #include <atomic>
 #include <cstdint>
+#include <cstdio>
+#include <functional>
+#include <memory>
+#include <optional>
 #include <pthread.h>
-#include <stdio.h>
 #include <vector>
-#include "functional"
-#include "string"
-#include "unordered_map"
-#include "memory"
+#include "breakpoint.hpp"
 
 constexpr unsigned MAX_VCPUS = 64;
 
@@ -17,7 +17,7 @@ struct gate_t {
     pthread_mutex_t mu;
     pthread_cond_t cv;
     
-    std::shared_ptr<const std::vector<uint64_t>> bp_vec; // accessed atomically via atomic_load/store
+    std::atomic<BreakpointSnapshot> bp_vec;
     pthread_mutex_t bp_write_mu; // serialize writers 
 };
 
@@ -53,12 +53,14 @@ public:
      * @param address Address to break at
      */
     int addBreakpoint(uint64_t address, gate_t& gate);
+    int addBreakpoint(const BreakpointSpec &breakpoint, gate_t& gate);
 
     /**
      * Add a breakpoint to the specified address. 
      * @param address Address to break at
      */
     int addBreakpoint(uint64_t address, int vcpu);
+    int addBreakpoint(const BreakpointSpec &breakpoint, int vcpu);
 
     /**
      * Remove a breakpoint from the specified address.
@@ -76,6 +78,9 @@ public:
      * Checks if there's a breakpoint at the specified address
      */
     int isBreakpoint(uint64_t address, gate_t& gate);
+    std::optional<BreakpointSpec> findBreakpoint(uint64_t address, gate_t& gate);
+    int runBreakpointScript(const BreakpointSpec &breakpoint, unsigned vcpu, uint64_t pc);
+    int applyBreakpointPatch(const BreakpointSpec &breakpoint);
 
     /**
      * Run a specific function when breakpoint is reached

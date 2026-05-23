@@ -22,7 +22,7 @@ bool Emulator::getIsFlagQueued(int vcpu, vcpu_operation_t cmd) {
     return (flags[vcpu].load(std::memory_order_relaxed) & cmd) == cmd;
 }
 
-int Emulator::addBreakpoint(uint64_t address, std::string &comment)
+int Emulator::addBreakpoint(uint64_t address, bool autopatch, std::string& pythonScriptPath)
 {
     const uint64_t base = getRuntimeBaseAddress();
     if (base == 0) {
@@ -32,8 +32,8 @@ int Emulator::addBreakpoint(uint64_t address, std::string &comment)
     const uint64_t offset = address - base;
 
     char cmd[256];
-    std::snprintf(cmd, sizeof(cmd), "break 0x%llx %d %s\n",
-                  offset, selectedVCPU, selectedThread.c_str());
+    std::snprintf(cmd, sizeof(cmd), "break 0x%llx %d %s %d %s\n",
+                  offset, selectedVCPU, selectedThread.c_str(), autopatch, pythonScriptPath.c_str());
 
     if (socket.sendCommand(cmd).compare(0, 2, "ok") != 0)
         return 1;
