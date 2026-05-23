@@ -1,4 +1,5 @@
 #include "emulatorAPI.hpp"
+#include <sstream>
 
 std::atomic_uint64_t Emulator::flags[MAX_VCPUS];
 
@@ -143,13 +144,13 @@ static std::string trimLine(const std::string &s)
     return s.substr(a, b - a + 1);
 }
 
-std::vector<uint64_t> Emulator::getBreakpointsFromConfig(int vcpuIndex)
+std::vector<Breakpoint> Emulator::getBreakpointsFromConfig(int vcpuIndex)
 {
     if (vcpuIndex < 0) {
         vcpuIndex = getSelectedVCPU();
     }
 
-    std::vector<uint64_t> out;
+    std::vector<Breakpoint> out;
     const uint64_t base = getRuntimeBaseAddress();
     if (base == 0) {
         return out;
@@ -179,11 +180,22 @@ std::vector<uint64_t> Emulator::getBreakpointsFromConfig(int vcpuIndex)
             continue;
         }
 
+        // Format: 0x{offset} {kind} {autopatch} {stop_after} {script_path}
+        std::istringstream ss(t);
+        std::string addrStr, kind, autoPatchStr, stopAfterStr, scriptPath;
+        ss >> addrStr >> kind >> autoPatchStr >> stopAfterStr;
+        std::getline(ss, scriptPath); // remainder is the script path (may be empty)
+        // trim leading space from script path
+        if (!scriptPath.empty() && scriptPath.front() == ' ')
+            scriptPath.erase(0, 1);
+
         try {
             size_t idx = 0;
-            uint64_t addr = std::stoull(t, &idx, 0);
+            uint64_t addr = std::stoull(addrStr, &idx, 0);
             if (idx > 0) {
-                out.push_back(base + addr);
+                bool autopatch = (autoPatchStr == "1");
+                bool hasPython = !scriptPath.empty();
+                out.push_back({base + addr, autopatch, hasPython});
             }
         } catch (...) {
             continue;

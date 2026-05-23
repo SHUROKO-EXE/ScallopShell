@@ -1,7 +1,7 @@
 #include "disasmdisplay.hpp"
 #include "emulatorAPI.hpp"
 
-#include <unordered_set>
+#include <unordered_map>
 #include <filesystem>
 
 using namespace ftxui;
@@ -24,7 +24,7 @@ namespace ScallopUI {
             std::vector<Box> rowBoxes;
             std::vector<Box> checkboxBoxes;
             std::vector<uint64_t> rowAddresses;
-            std::unordered_set<uint64_t> breakpoints;
+            std::unordered_map<uint64_t, Breakpoint> breakpoints;
             bool breakpointsLoaded = false;
             int lastBreakpointVcpu = -1;
             std::filesystem::path lastBreakpointPath;
@@ -39,11 +39,12 @@ namespace ScallopUI {
 
             void setBreakpoint(uint64_t address, bool enabled) {
                 if (enabled) {
+                    const bool currentAutopatch = state_ ? state_->autopatch : autopatch;
                     // Only send to the backend when the breakpoint is newly enabled.
-                    if (!breakpoints.contains(address)) {                        
-                        Emulator::addBreakpoint(address, autopatch, pythonScriptPath);
+                    if (!breakpoints.contains(address)) {
+                        Emulator::addBreakpoint(address, currentAutopatch, pythonScriptPath);
                     }
-                    breakpoints.insert(address);
+                    breakpoints[address] = {address, currentAutopatch, !pythonScriptPath.empty()};
                     return;
                 }
 
@@ -192,9 +193,13 @@ namespace ScallopUI {
                 }
 
                 if (!breakpointsLoaded || hasUpdated || currentVcpu != lastBreakpointVcpu || configChanged) {
+                    auto prevBreakpoints = breakpoints;
                     breakpoints.clear();
-                    for (uint64_t addr : Emulator::getBreakpointsFromConfig(currentVcpu)) {
-                        breakpoints.insert(addr);
+                    for (const Breakpoint& bp : Emulator::getBreakpointsFromConfig(currentVcpu)) {
+                        auto it = prevBreakpoints.find(bp.address);
+                        bool hasPython = bp.hasPythonScriptExec ||
+                                         (it != prevBreakpoints.end() && it->second.hasPythonScriptExec);
+                        breakpoints[bp.address] = {bp.address, bp.autopatch, hasPython};
                     }
                     breakpointsLoaded = true;
                     lastBreakpointVcpu = currentVcpu;
@@ -243,8 +248,13 @@ namespace ScallopUI {
 
                     auto disasmColor = color(Color::Magenta);
 
-                    if (hasBreakpoint) 
-                        disasmColor = color(Color::Red1);
+                    bool isPythonScript = hasBreakpoint && breakpoints.at(info.address).hasPythonScriptExec;
+                    if (hasBreakpoint) {
+                        if (isPythonScript)
+                            disasmColor = color(Color::Blue1);
+                        else
+                            disasmColor = color(Color::Red1);
+                    }
                     else if (info.instructionType == "other") 
                         disasmColor = color(Color::Magenta);
                     else if (info.instructionType == "jmp") 
@@ -256,9 +266,8 @@ namespace ScallopUI {
                     else if (info.instructionType == "ret") 
                         disasmColor = color(Color::MediumPurple1);
                     
-                    Element left = hbox({text(hex8ByteStr(info.address)) | disasmColor, text(" - " + info.instruction + "\n") | (hasBreakpoint ? color(Color::Red1) : color(Color::CornflowerBlue))});
+                    Element left = hbox({text(hex8ByteStr(info.address)) | disasmColor, text(" - " + info.instruction + "\n") | (hasBreakpoint ? (isPythonScript ? color(Color::Blue1) : color(Color::Red1))  : color(Color::CornflowerBlue))});
                     
-
                     Element mid = text("   ");//separator();
 
                     // Print the symbol

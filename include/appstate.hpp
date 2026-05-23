@@ -109,6 +109,7 @@ struct AppState {
 
     // ===== Emulator state (could move more here) =====
     bool emulatorRunning = false;
+    bool autopatch = false;
 };
 
 using AppStatePtr = std::shared_ptr<AppState>;

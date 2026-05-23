@@ -200,7 +200,7 @@ namespace ScallopUI
                   followedReg_(std::move(followedReg)),
                   cache_key_(followedReg_.empty() ? "default" : followedReg_)
                   {
-                    shouldAutopatch = Checkbox("Autopatch", &autoPatch);
+                    shouldAutopatch = Checkbox("Autopatch", state_ ? &state_->autopatch : &autoPatch);
                     Add(shouldAutopatch);
                   }
 

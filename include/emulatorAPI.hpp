@@ -47,6 +47,12 @@ enum class _EmulRetCode {
     ERROR = 1
 };
 
+struct Breakpoint {
+    uint64_t address;
+    bool autopatch;
+    bool hasPythonScriptExec;
+};
+
 struct InstructionInfo {
     std::string instruction;
     std::string instructionType;
@@ -104,7 +110,7 @@ public:
     static int addBreakpoint(uint64_t address, bool autopatch, std::string& pythonScriptPath);
     static int deleteBreakpoint(uint64_t address);
     static std::filesystem::path getBreakpointConfigPath(int vcpuIndex = -1);
-    static std::vector<uint64_t> getBreakpointsFromConfig(int vcpuIndex = -1);
+    static std::vector<Breakpoint> getBreakpointsFromConfig(int vcpuIndex = -1);
     static uint64_t getRuntimeBaseAddress();
 
     /**
