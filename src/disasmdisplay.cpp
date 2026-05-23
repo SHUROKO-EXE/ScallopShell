@@ -29,6 +29,10 @@ namespace ScallopUI {
             int lastBreakpointVcpu = -1;
             std::filesystem::path lastBreakpointPath;
             std::filesystem::file_time_type lastBreakpointMtime{};
+            std::string pythonScriptPath = "";
+            bool autopatch = false;
+            bool showInputModal_ = false;
+            std::string inputBuffer_;
             bool lastBreakpointMtimeValid = false;
             uint64_t lastBaseAddress = 0;
             AppStatePtr state_;
@@ -36,10 +40,8 @@ namespace ScallopUI {
             void setBreakpoint(uint64_t address, bool enabled) {
                 if (enabled) {
                     // Only send to the backend when the breakpoint is newly enabled.
-                    if (!breakpoints.contains(address)) {
-                        std::string pythonScriptPath = "/home/bradley/fah.py";
-                        
-                        Emulator::addBreakpoint(address, true, pythonScriptPath);
+                    if (!breakpoints.contains(address)) {                        
+                        Emulator::addBreakpoint(address, autopatch, pythonScriptPath);
                     }
                     breakpoints.insert(address);
                     return;
@@ -53,10 +55,37 @@ namespace ScallopUI {
             bool Focusable() const override { return true; }
 
             bool OnEvent(Event e) override {
-                
+
+                if (showInputModal_) {
+                    if (e == Event::Escape) {
+                        showInputModal_ = false;
+                        return true;
+                    }
+                    if (e == Event::Return) {
+                        pythonScriptPath = inputBuffer_;
+                        showInputModal_ = false;
+                        return true;
+                    }
+                    if (e == Event::Backspace) {
+                        if (!inputBuffer_.empty()) inputBuffer_.pop_back();
+                        return true;
+                    }
+                    if (e.is_character()) {
+                        inputBuffer_ += e.character();
+                        return true;
+                    }
+                    return true;
+                }
+
                 if (e == Event::ArrowUp) {
                     if (currentTopRow > 0) currentTopRow--;
                     follow_tail = false;
+                    return true;
+                }
+
+                if (Focused() && (e == Event::CtrlB)) {
+                    inputBuffer_ = pythonScriptPath;
+                    showInputModal_ = true;
                     return true;
                 }
 
@@ -192,7 +221,8 @@ namespace ScallopUI {
                 }
                 lastTotalLines = totalLines;
                 
-                auto header = hbox({text("  Disassembly View"), text("        Base Address:" + hex8ByteStr(Emulator::getRuntimeBaseAddress()))}) | underlined | dim | bold | color(Color::CornflowerBlue);
+                auto header = hbox({text("  Disassembly "), text("  Base Addr:" + hex8ByteStr(Emulator::getRuntimeBaseAddress())), text("  Ctrl+B for Py Break.")}) 
+                    | underlined | dim | bold | color(Color::CornflowerBlue);
                 lines.push_back(header);
 
                 for (int r = 0; r < instructionCount; r++) {
@@ -246,7 +276,18 @@ namespace ScallopUI {
                     auto display = vbox(lines) | border | focus | reflect(renderedArea);
 
                     if (Focused())
-                        return display | color(Color::Magenta);
+                        display = display | color(Color::Magenta);
+
+                    if (showInputModal_) {
+                        auto cursor = text(inputBuffer_ + "▋") | color(Color::White);
+                        auto modal_box = vbox({
+                            text(" Set Python Script Path ") | bold | center,
+                            separator(),
+                            hbox({text(" > ") | color(Color::Cyan), cursor}) | border,
+                            text(" Enter: confirm  ·  Esc: cancel ") | dim | center,
+                        }) | border | bgcolor(Color::Black) | color(Color::White);
+                        return dbox({display, modal_box | vcenter | hcenter | clear_under});
+                    }
 
                     return display;
                 }
