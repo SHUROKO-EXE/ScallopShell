@@ -18,7 +18,7 @@ int regDump()
     {
         //debug("got registers\n");
         
-        std::filesystem::path path = std::filesystem::temp_directory_path() / "regdump.txt";
+        std::filesystem::path path = std::filesystem::temp_directory_path() / ("regdump" + std::to_string(vcpu_current_thread_index) + ".txt");
         FILE *f = fopen(path.c_str(), "w");
 
         if (f)

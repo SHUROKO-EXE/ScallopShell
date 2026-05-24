@@ -66,6 +66,7 @@ int main(int argc, char** argv) {
     state->disasm = ScallopUI::DisasmDisplay(state);
     state->cliInput = ScallopUI::InputCli();
     state->assembler = ScallopUI::AssemblerDisplay(arch);
+    
 
     auto cli_history = ScallopUI::CliHistory();
 

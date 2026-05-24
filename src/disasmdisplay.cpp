@@ -230,6 +230,10 @@ namespace ScallopUI {
                     | underlined | dim | bold | color(Color::CornflowerBlue);
                 lines.push_back(header);
 
+                size_t maxInstrLen = 0;
+                for (int r = 0; r < instructionCount; r++)
+                    maxInstrLen = std::max(maxInstrLen, assemblyInstructions->at(r).instruction.size());
+
                 for (int r = 0; r < instructionCount; r++) {
                     const auto& info = assemblyInstructions->at(r);
                     rowAddresses[static_cast<size_t>(r)] = info.address;
@@ -255,31 +259,35 @@ namespace ScallopUI {
                         else
                             disasmColor = color(Color::Red1);
                     }
-                    else if (info.instructionType == "other") 
+                    else if (info.instructionType == "other")
                         disasmColor = color(Color::Magenta);
-                    else if (info.instructionType == "jmp") 
+                    else if (info.instructionType == "jmp")
                         disasmColor = color(Color::Yellow1);
-                    else if (info.instructionType == "call") 
+                    else if (info.instructionType == "call")
                         disasmColor = color(Color::Yellow1);
-                    else if (info.instructionType == "cond") 
+                    else if (info.instructionType == "cond")
                         disasmColor = color(Color::Orange1);
-                    else if (info.instructionType == "ret") 
+                    else if (info.instructionType == "ret")
                         disasmColor = color(Color::MediumPurple1);
-                    
-                    Element left = hbox({text(hex8ByteStr(info.address)) | disasmColor, text(" - " + info.instruction + "\n") | (hasBreakpoint ? (isPythonScript ? color(Color::Blue1) : color(Color::Red1))  : color(Color::CornflowerBlue))});
-                    
-                    Element mid = text("   ");//separator();
 
-                    // Print the symbol
-                    Element right = hbox({filler(), text(" " +  info.symbol) | color(Color::Magenta)});
+                    size_t gap = maxInstrLen + 5 - info.instruction.size();
+                    std::string arrowStr = info.symbol.empty() ? std::string(gap + 1, ' ') : "  <" + std::string(gap - 3, '-') + " ";
 
-                    Element row = hbox({checkbox, left, mid, right}) | reflect(rowBoxes[r]);
+                    auto instrColor = hasBreakpoint ? (isPythonScript ? color(Color::Blue1) : color(Color::Red1)) : color(Color::CornflowerBlue);
+                    Element left = hbox({
+                        text(hex8ByteStr(info.address)) | disasmColor,
+                        text(" - " + info.instruction) | instrColor,
+                        text(arrowStr) | color(Color::GrayLight),
+                    });
+
+                    Element right = text(info.symbol) | color(Color::Magenta);
+
+                    Element row = hbox({checkbox, left, right}) | reflect(rowBoxes[r]);
                     if (hasBreakpoint) {
                         row = row | color(Color::White);
                     }
                     lines.emplace_back(row);
-                    //lines.emplace_back(hbox({left}));
-                
+
                     }
 
                     auto display = vbox(lines) | border | focus | reflect(renderedArea);

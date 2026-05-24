@@ -120,7 +120,7 @@ int memDump() {
     if (read_ok)
     {
         // Open the memdump file
-        std::filesystem::path path = std::filesystem::temp_directory_path() / "memdump.txt";
+        std::filesystem::path path = std::filesystem::temp_directory_path() / ("memdump" + std::to_string(vcpu_current_thread_index) + ".txt");
         FILE *f = fopen(path.c_str(), "w");
         if (f)
         {
@@ -148,7 +148,3 @@ int memDump() {
 
 }
 
-/*
-int enqueueMemDump(uint64_t address, int n, bool* ok) {
-    qemu_plugin_vcpu_for_each(scallopstate.getID(), memDump(address, n, ok))
-}*/

@@ -122,7 +122,7 @@ std::vector<uint8_t>* Emulator::getMemory(uint64_t address, int n,
     }
 
     static std::filesystem::path tempFilePath = std::filesystem::temp_directory_path();
-    std::ifstream memoryFile( tempFilePath / "memdump.txt", std::ios::in);
+    std::ifstream memoryFile( tempFilePath / ("memdump" + std::to_string(getSelectedVCPU()) + ".txt"), std::ios::in);
     if (!memoryFile.is_open())
     {
         cache.tryUpdateAgain = true;

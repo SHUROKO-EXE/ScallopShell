@@ -70,6 +70,8 @@ The controls right now subject to change. CtrlS will assign you to the CLI, Ctrl
 
 One feature of Scallop Shell is live patching in the byte displays. If you want to change any of the bytes in the display, just click on the byte you want to change. Of course, the only values you can enter are 0-9 and A-F. Once you're done patching the bytes, hit enter and it'll save. You can hit Shift+Z to undo the edits you made UNTIL you step to the next instruction. Upon stepping, the live patcher will send a request to the emulator to modify the memory you changed. This then clears the history, so undoing is no longer possible. You can still edit it again of course.
 
+In the memory display, there is a button "Autopatch". When this is selected, whatever you have queued up to patch after you step in the binary will automatically patch again when you get to that breakpoint. 
+
 ## Notepad 
 
 You can take notes on the Notepad tab about what you're working on. Ctrl+S to save. When you open up that binary in Scallop Shell again, it'll open your old notes back up.
@@ -86,7 +88,7 @@ Break anywhere you want by putting "break 0x" , followed by the instruction to b
 ```
 break 0x400360
 ```
-You can also point and click the squares to the left of the disassembled instructions to toggle a breakpoint
+You can also point and click the squares to the left of the disassembled instructions to toggle a breakpoint. Ctrl B over the disassembly display will open up an input box for you to write a path to a Python script. This breakpoint will then show up as blue, and when reached, will automatically execute the target Python script. This could be something like a pwntools script, some shell commands, or network traffic. You are limited by your imagination. 
 
 ## File I/O Watching / Writing
 

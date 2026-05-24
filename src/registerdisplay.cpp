@@ -11,52 +11,122 @@ namespace ScallopUI
         class Impl : public ComponentBase
         {
         private:
-            bool Focusable() const override { return false; }
+
+            int rows;
+            int currentTopRow = 0;
+            int min_top = 37;
+            int instructionCount = 0;
+            int maxTopRow = 0;
+            Box renderedArea;
+            bool follow_tail = false;
+            int totalLines = 0;
+            int lastTotalLines = 0;
+
+            bool Focusable() const override { return true; }
+
+            bool OnEvent(Event e) override {
+
+                if (e == Event::ArrowUp) {
+                    if (currentTopRow > 0) currentTopRow--;
+                    follow_tail = false;
+                    return true;
+                }
+
+                if (e == Event::ArrowDown) {
+                    int maxTopRow = std::max(0, totalLines - min_top);
+                    if (currentTopRow < maxTopRow) currentTopRow++;
+                    if (currentTopRow >= maxTopRow) follow_tail = true;
+                    return true;
+                }
+
+                if (e == Event::PageUp) {
+                    currentTopRow = std::max(0, currentTopRow - min_top);
+                    follow_tail = false;
+                    return true;
+                }
+
+                if (e == Event::PageDown) {
+                    int maxTopRow = std::max(0, totalLines - min_top);
+                    currentTopRow = std::min(maxTopRow, currentTopRow + min_top);
+                    if (currentTopRow >= maxTopRow) follow_tail = true;
+                    return true;
+                }
+
+                if (e.is_mouse()) {
+                    const auto& m = e.mouse();
+                    if (!renderedArea.Contain(m.x, m.y))
+                        return false;
+
+                    if (Focused() && m.button == Mouse::WheelUp) {
+                        if (currentTopRow > 0) currentTopRow--;
+                        follow_tail = false;
+                        return true;
+                    }
+                    if (Focused() && m.button == Mouse::WheelDown) {
+                        int maxTopRow = std::max(0, totalLines - min_top);
+                        if (currentTopRow < maxTopRow) currentTopRow++;
+                        if (currentTopRow >= maxTopRow) follow_tail = true;
+                        return true;
+                    }
+                    return false;
+                }
+
+                return ComponentBase::OnEvent(e);
+
+            }
+
 
             Element OnRender() override
             {
 
                 const std::vector<std::string> *registers = Emulator::getRegisters();
-                
-                // Lines and color definitions
-                std::vector<Element> lines;
+
+                std::vector<Element> allLines;
                 auto headerColor = Color::CornflowerBlue;
-                auto leftSideColor = Color::Magenta;
-                auto rightSideColor = Color::CornflowerBlue;
-                
 
-                // Set the header 
                 auto header = hbox({text("  Register View")}) | underlined | dim | bold | color(headerColor);
-                lines.push_back(header);
+                allLines.push_back(header);
+                allLines.push_back(text("--------------------------------------------------------------------------------------------------------------------------------"));
 
-                // For every register that we get back:
                 for (uint r = 0; r < registers->size(); r++)
                 {
-                    // If it's not at either the last or the second to last register:
                     if (r + 1 < registers->size())
                     {
-                        Element left = text(registers->at(r)) | color(leftSideColor) | size(WIDTH, EQUAL, 50);
+                        Element left;
 
-                        Element mid = separator();
+                        if (r % 2) {
+                            left = text(" " + registers->at(r)) | color(Color::Magenta) | size(WIDTH, EQUAL, 50);
+                        }
+                        else {
+                            left = text(registers->at(r)) | color(Color::CornflowerBlue) | size(WIDTH, EQUAL, 50);
+                        }
 
-                        // Right column: filler eats remaining space on the left, text ends up at the right edge
-                        Element right = hbox({
-                                            filler(), // expands
-                                            text(registers->at(r + 1)) | color(rightSideColor),
-                                        }) |
-                                        size(WIDTH, EQUAL, 50);
-
-                        lines.emplace_back(hbox({left, mid, right}));
-                        r++;
+                        allLines.emplace_back(hbox({left}));
                     }
                     else
                     {
-                        // If there's one more register left, put it on the left side
-                        lines.emplace_back(text(registers->at(r)) | color(leftSideColor));
+                        allLines.emplace_back(text(registers->at(r)) | color(Color::CornflowerBlue));
                     }
                 }
 
-                return vbox(lines) | border;
+                totalLines = static_cast<int>(allLines.size());
+                int maxTopRow = std::max(0, totalLines - min_top);
+
+                if (follow_tail)
+                    currentTopRow = maxTopRow;
+
+                currentTopRow = std::max(0, std::min(maxTopRow, currentTopRow));
+
+                int start = currentTopRow;
+                int end = std::min(totalLines, currentTopRow + min_top);
+                std::vector<Element> visibleLines(allLines.begin() + start, allLines.begin() + end);
+
+                auto display = vbox(visibleLines) | border | reflect(renderedArea);
+
+                if (Focused())
+                    return display | color(Color::Magenta);
+                else
+                    return display;
             }
 
         public:

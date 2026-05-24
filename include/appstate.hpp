@@ -32,8 +32,8 @@ struct AppState {
     std::vector<std::string> rightTabNames = {"registers", "assembler"};
 
     // ===== Split sizes (persisted across renders) =====
-    int disasmSplitSize = 50;
-    int registerSplitSize = 110;
+    int disasmSplitSize = 44;
+    int registerSplitSize = 160;
     int cliSplitSize = 10;
     int ioSplitSize = 150;
     int cliHistorySplitSize = 5;

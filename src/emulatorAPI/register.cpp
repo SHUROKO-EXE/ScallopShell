@@ -1,12 +1,21 @@
 #include "emulatorAPI.hpp"
 #include "fstream"
 
-std::filesystem::path kRegDump = std::filesystem::temp_directory_path() / "regdump.txt";
-
 std::vector<std::string> *Emulator::getRegisters()
 {
+
+    static std::filesystem::path kRegDump = std::filesystem::temp_directory_path() / ("regdump" + std::to_string(getSelectedVCPU()) + ".txt");
+
     static bool tryagain = true;
     static std::vector<std::string> registers;
+    static int lastVCPU = getSelectedVCPU();
+
+    // Only change filepath when the vcpu changes
+    if (lastVCPU != getSelectedVCPU()) {
+        kRegDump = std::filesystem::temp_directory_path() / ("regdump" + std::to_string(getSelectedVCPU()) + ".txt");
+    }
+    lastVCPU = getSelectedVCPU();
+
 
     const bool update_requested = getIsFlagQueued(0, VCPU_OP_DUMP_REGS);
     if (!update_requested && !tryagain)
