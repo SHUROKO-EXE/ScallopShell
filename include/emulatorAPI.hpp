@@ -53,6 +53,15 @@ struct Breakpoint {
     bool hasPythonScriptExec;
 };
 
+struct MemoryAccessInfo {
+    bool isWrite;
+    uint64_t address;
+    uint64_t size;
+    std::string value;
+    std::string endian;
+    bool signExtended;
+};
+
 struct InstructionInfo {
     std::string instruction;
     std::string instructionType;
@@ -61,6 +70,7 @@ struct InstructionInfo {
     uint64_t throughAddress;
     uint64_t fallThroughAddress;
     uint8_t addrTaken;
+    std::vector<MemoryAccessInfo> memoryAccesses;
 
     InstructionInfo(std::string _instruction, 
         std::string _instructionType,

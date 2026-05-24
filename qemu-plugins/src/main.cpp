@@ -954,7 +954,6 @@ static void plugin_exit(qemu_plugin_id_t id, void *u)
 {
     scallopstate.getGates().pauseAll();
     stop_request_worker();
-    closeMemoryAccessLogs();
     for (unsigned i = 0; i < MAX_VCPUS; i++) {
         if (scallopstate.g_out[i] && scallopstate.g_out[i] != stderr) {
             fflush(scallopstate.g_out[i]);
@@ -1031,7 +1030,6 @@ int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info, int argc, 
         fprintf(scallopstate.g_out[i], "pc,kind,branch_target,fallthrough,tb_vaddr,bytes,disas,symbol\n");
         fflush(scallopstate.g_out[i]);
     }
-    initMemoryAccessLogs();
 
     Dl_info soinfo{};
     if (dladdr((void *)&qemu_plugin_install, &soinfo) && soinfo.dli_fname)

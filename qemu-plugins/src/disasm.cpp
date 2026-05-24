@@ -187,7 +187,10 @@ static void log(unsigned int vcpu_index, void *udata)
     ensure_symbol_resolver_ready();
 
     auto *ctx = static_cast<exec_ctx *>(udata);
-    if (!ctx || !scallopstate.g_out[vcpu_index]) // If anything failed to initialize, ignore it
+    if (ctx) {
+        setMemoryAccessLoggingState(vcpu_index, ctx->pc, false);
+    }
+    if (!ctx || vcpu_index >= MAX_VCPUS || !scallopstate.g_out[vcpu_index]) // If anything failed to initialize, ignore it
 
     {
         return;
@@ -225,6 +228,10 @@ static void log(unsigned int vcpu_index, void *udata)
     if (written < 0)
     {
         debug("fprintf failed for pc=0x%" PRIx64 ": %s\n", ctx->pc, strerror(errno));
+    }
+    else
+    {
+        setMemoryAccessLoggingState(vcpu_index, ctx->pc, true);
     }
     fflush(scallopstate.g_out[vcpu_index]);
 

@@ -4,8 +4,13 @@
 
 namespace
 {
-    std::mutex g_memory_access_log_mutex;
-    FILE *g_memory_access_logs[MAX_VCPUS] = {nullptr};
+    struct ActiveInstruction
+    {
+        uint64_t pc = 0;
+        bool logged = false;
+    };
+
+    ActiveInstruction g_active_instructions[MAX_VCPUS];
 
     std::string memory_value_to_hex(const qemu_plugin_mem_value &value)
     {
@@ -32,17 +37,6 @@ namespace
         return out;
     }
 
-    bool should_log_memory_access(uint64_t pc)
-    {
-        if (!scallopstate.getGates().isInRange(pc))
-        {
-            return false;
-        }
-
-        const uint64_t start_code = qemu_plugin_start_code();
-        const uint64_t end_code = qemu_plugin_end_code();
-        return pc >= start_code && pc < end_code;
-    }
 }
 
 /**
@@ -193,47 +187,11 @@ int memDump()
     return 0;
 }
 
-void initMemoryAccessLogs()
+void setMemoryAccessLoggingState(unsigned int vcpu_index, uint64_t pc, bool logged)
 {
-    std::lock_guard<std::mutex> lock(g_memory_access_log_mutex);
-
-    for (unsigned int i = 0; i < MAX_VCPUS; ++i)
+    if (vcpu_index < MAX_VCPUS)
     {
-        if (g_memory_access_logs[i])
-        {
-            fclose(g_memory_access_logs[i]);
-            g_memory_access_logs[i] = nullptr;
-        }
-
-        const std::filesystem::path path =
-            std::filesystem::temp_directory_path() / ("memaccess" + std::to_string(i) + ".txt");
-        FILE *f = fopen(path.c_str(), "w+");
-        if (!f)
-        {
-            debug("[memaccess] failed to open %s\n", path.c_str());
-            continue;
-        }
-
-        setvbuf(f, NULL, _IOLBF, 0);
-        fprintf(f, "pc,access,vaddr,size,value,endian,sign_extended\n");
-        fflush(f);
-        g_memory_access_logs[i] = f;
-    }
-}
-
-void closeMemoryAccessLogs()
-{
-    std::lock_guard<std::mutex> lock(g_memory_access_log_mutex);
-
-    for (unsigned int i = 0; i < MAX_VCPUS; ++i)
-    {
-        if (!g_memory_access_logs[i])
-        {
-            continue;
-        }
-        fflush(g_memory_access_logs[i]);
-        fclose(g_memory_access_logs[i]);
-        g_memory_access_logs[i] = nullptr;
+        g_active_instructions[vcpu_index] = ActiveInstruction{pc, logged};
     }
 }
 
@@ -248,7 +206,8 @@ void logMemoryAccesses(unsigned int vcpu_index,
     }
 
     const uint64_t pc = *static_cast<const uint64_t *>(userdata);
-    if (!should_log_memory_access(pc))
+    const ActiveInstruction &active = g_active_instructions[vcpu_index];
+    if (!active.logged || active.pc != pc || !scallopstate.g_out[vcpu_index])
     {
         return;
     }
@@ -262,14 +221,8 @@ void logMemoryAccesses(unsigned int vcpu_index,
                                   ? memory_value_to_hex(qemu_plugin_mem_get_value(info))
                                   : "";
 
-    std::lock_guard<std::mutex> lock(g_memory_access_log_mutex);
-    FILE *f = g_memory_access_logs[vcpu_index];
-    if (!f)
-    {
-        return;
-    }
-
-    fprintf(f, "0x%" PRIx64 ",%s,0x%" PRIx64 ",%" PRIu64 ",%s,%s,%s\n",
+    FILE *f = scallopstate.g_out[vcpu_index];
+    fprintf(f, "@mem,0x%" PRIx64 ",%s,0x%" PRIx64 ",%" PRIu64 ",%s,%s,%s\n",
             pc, access, vaddr, size, value.c_str(), endian, sign_extended);
     fflush(f);
 }

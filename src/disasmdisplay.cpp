@@ -8,6 +8,25 @@ using namespace ftxui;
 
 namespace ScallopUI {
 
+    static std::string formatMemoryAccesses(const InstructionInfo& info) {
+        std::string summary;
+        constexpr size_t kMaxShown = 2;
+        const size_t shown = std::min(kMaxShown, info.memoryAccesses.size());
+
+        for (size_t i = 0; i < shown; ++i) {
+            const MemoryAccessInfo& access = info.memoryAccesses[i];
+            summary += access.isWrite ? "  WR[" : "  RD[";
+            summary += hex8ByteStr(access.address) + "]:";
+            summary += std::to_string(access.size) + "B";
+            if (!access.value.empty()) {
+                summary += "=" + access.value;
+            }
+        }
+        if (info.memoryAccesses.size() > shown) {
+            summary += " (+" + std::to_string(info.memoryAccesses.size() - shown) + " accesses)";
+        }
+        return summary;
+    }
 
     Component DisasmDisplay(AppStatePtr state) {
         class Impl : public ComponentBase {
@@ -37,6 +56,8 @@ namespace ScallopUI {
             uint64_t lastBaseAddress = 0;
             bool showSymbols_ = true;
             Box symButtonBox_;
+            bool showMemAccess_ = false;
+            Box memButtonBox_;
             AppStatePtr state_;
 
             void setBreakpoint(uint64_t address, bool enabled) {
@@ -136,6 +157,10 @@ namespace ScallopUI {
                             showSymbols_ = !showSymbols_;
                             return true;
                         }
+                        if (memButtonBox_.Contain(m.x, m.y)) {
+                            showMemAccess_ = !showMemAccess_;
+                            return true;
+                        }
                         for (int i = 0; i < instructionCount &&
                                         i < static_cast<int>(checkboxBoxes.size()); ++i) {
                             if (!checkboxBoxes[i].Contain(m.x, m.y)) continue;
@@ -233,9 +258,10 @@ namespace ScallopUI {
                 lastTotalLines = totalLines;
                 
                 auto symBtn = hbox({text("Symbols: "), text(showSymbols_ ? "[X]" : "[ ]") | reflect(symButtonBox_)});
+                auto memBtn = hbox({text("  Memory Access: "), text(showMemAccess_ ? "[X]" : "[ ]") | reflect(memButtonBox_)});
                 auto header = hbox({text("  Disassembly "), text("  Base Addr:" + hex8ByteStr(Emulator::getRuntimeBaseAddress())), text("      Ctrl+B for Python Break.")})
                     | underlined | dim | bold | color(Color::CornflowerBlue);
-                auto headerLine = hbox({header, filler(), symBtn});
+                auto headerLine = hbox({header, filler(), symBtn, memBtn});
                 lines.push_back(headerLine);
 
                 size_t maxInstrLen = 0;
@@ -288,7 +314,10 @@ namespace ScallopUI {
                         text(arrowStr) | color(Color::GrayLight),
                     });
 
-                    Element right = text(showSymbols_ ? info.symbol : "") | color(Color::Magenta);
+                    Element right = hbox({
+                        text(showSymbols_ ? info.symbol : "") | color(Color::Magenta),
+                        text(showMemAccess_ ? formatMemoryAccesses(info) : "") | color(Color::Cyan),
+                    });
 
                     Element row = hbox({checkbox, left, right}) | reflect(rowBoxes[r]);
                     if (hasBreakpoint) {

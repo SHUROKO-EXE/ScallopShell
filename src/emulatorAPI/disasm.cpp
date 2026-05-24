@@ -107,6 +107,23 @@ static bool isDataLine(const std::string& line) {
     return (t.size() >= 3 && t[0] == '0' && (t[1] == 'x' || t[1] == 'X'));
 }
 
+static bool parse_uint64(const std::string& field, uint64_t& out)
+{
+    std::string t = trim(field);
+    if (t.empty()) {
+        return false;
+    }
+
+    char* end = nullptr;
+    unsigned long long value = std::strtoull(t.c_str(), &end, 0);
+    if (end == t.c_str() || *end != '\0') {
+        return false;
+    }
+
+    out = static_cast<uint64_t>(value);
+    return true;
+}
+
 // Build/extend the line offset index incrementally
 // Only scans new portions of the file - O(new_bytes) not O(total_bytes)
 static void updateLineIndex(std::ifstream& f, uintmax_t currentSize, VCPUIndexState& state) {
@@ -206,6 +223,36 @@ static InstructionInfo parseLine(const std::string& line) {
     return InstructionInfo(std::move(dis), std::move(disType), std::move(symbol), pc, bt, ft, bt ? 1u : 0u);
 }
 
+static std::optional<MemoryAccessInfo> parseMemoryAccessLine(const std::string& line,
+                                                               uint64_t instructionPc)
+{
+    auto cols = parse_csv(line);
+    if (cols.size() < 8 || trim(cols[0]) != "@mem" ||
+        parse_hex(cols[1]) != instructionPc) {
+        return std::nullopt;
+    }
+
+    uint64_t address = 0;
+    uint64_t size = 0;
+    if (!parse_uint64(cols[3], address) || !parse_uint64(cols[4], size)) {
+        return std::nullopt;
+    }
+
+    const std::string access = trim(cols[2]);
+    if (access != "read" && access != "write") {
+        return std::nullopt;
+    }
+
+    return MemoryAccessInfo{
+        access == "write",
+        address,
+        size,
+        trim(cols[5]),
+        trim(cols[6]),
+        trim(cols[7]) == "true"
+    };
+}
+
 std::vector<InstructionInfo>* Emulator::getRunInstructions(
     int start_line,
     int n,
@@ -259,36 +306,41 @@ std::vector<InstructionInfo>* Emulator::getRunInstructions(
     int total_lines = static_cast<int>(state.lineOffsets.size());
     if (total_lines_out) *total_lines_out = total_lines;
 
-    // If request is the same and current window data is still valid,
-    // we can skip re-reading the lines (but we already reported updated=true above)
-    if (request_unchanged && start_line + n <= total_lines && !instructionInfo.empty()) {
-        state.cachedSize = sz;
-        return &instructionInfo;
-    }
-
     // Need to re-read the requested lines
     instructionInfo.clear();
 
-    // Seek directly to start_line and read only n lines - O(n)
+    // Read each visible instruction span: an instruction record followed by
+    // any adjacent @mem records emitted during that dynamic execution.
     if (start_line < total_lines) {
-        f.clear();
-        f.seekg(state.lineOffsets[start_line], std::ios::beg);
+        const int endLine = n <= 0 ? total_lines : std::min(total_lines, start_line + n);
+        for (int lineIdx = start_line; lineIdx < endLine; ++lineIdx) {
+            f.clear();
+            f.seekg(state.lineOffsets[lineIdx], std::ios::beg);
 
-        std::string line;
-        int count = 0;
-        int lineIdx = start_line;
+            std::string line;
+            if (!std::getline(f, line) || !isDataLine(line)) {
+                continue;
+            }
 
-        while (std::getline(f, line) && (n <= 0 || count < n) && lineIdx < total_lines) {
-            std::string s = trim(line);
-            if (s.empty()) continue;
+            InstructionInfo instruction = parseLine(line);
+            const std::streamoff spanEnd =
+                lineIdx + 1 < total_lines
+                    ? state.lineOffsets[lineIdx + 1]
+                    : static_cast<std::streamoff>(sz);
 
-            auto cols = parse_csv(s);
-            if (!hasMinimumInstructionColumns(cols)) continue;
-            if (!isDataLine(s)) continue;
+            while (f) {
+                const std::streamoff rowStart = f.tellg();
+                if (rowStart < 0 || rowStart >= spanEnd || !std::getline(f, line)) {
+                    break;
+                }
 
-            instructionInfo.push_back(parseLine(line));
-            ++count;
-            ++lineIdx;
+                auto access = parseMemoryAccessLine(line, instruction.address);
+                if (access) {
+                    instruction.memoryAccesses.push_back(std::move(*access));
+                }
+            }
+
+            instructionInfo.push_back(std::move(instruction));
         }
     }
 

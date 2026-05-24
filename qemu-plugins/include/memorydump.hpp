@@ -3,8 +3,7 @@
 
 int memDump();
 
-void initMemoryAccessLogs();
-void closeMemoryAccessLogs();
+void setMemoryAccessLoggingState(unsigned int vcpu_index, uint64_t pc, bool logged);
 
 void logMemoryAccesses(unsigned int vcpu_index,
                        qemu_plugin_meminfo_t info,
