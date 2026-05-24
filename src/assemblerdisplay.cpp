@@ -1,4 +1,5 @@
 #include "assemblerdisplay.hpp"
+#include "appstate.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -405,7 +406,7 @@ int defaultEndianForTarget(const ArchProfile& target, const ArchProfile& detecte
 
 } // namespace
 
-Component AssemblerDisplay(const std::string& arch) {
+Component AssemblerDisplay(AppStatePtr appState, const std::string& arch) {
     struct Impl : ComponentBase {
         ArchProfile detectedProfile_;
         ArchProfile profile_;
@@ -428,9 +429,10 @@ Component AssemblerDisplay(const std::string& arch) {
         Component container_;
         Box renderBox_;
         Box inputBox_;
+        AppStatePtr appState; 
 
-        explicit Impl(std::string targetArch)
-            : detectedProfile_(profileForArch(targetArch)) {
+        explicit Impl(AppStatePtr appStatePtr, std::string targetArch)
+            : appState(appStatePtr), detectedProfile_(profileForArch(targetArch)) {
             targets_ = availableTargetProfiles(detectedProfile_);
             targetNames_ = targetLabelsFrom(targets_);
             target_ = targetIndexForDetectedProfile(targets_, detectedProfile_);
@@ -475,9 +477,12 @@ Component AssemblerDisplay(const std::string& arch) {
                 const auto& mouse = event.mouse();
                 if (renderBox_.Contain(mouse.x, mouse.y)) {
                     TakeFocus();
-                    if (inputBox_.Contain(mouse.x, mouse.y) || mouse.button == Mouse::None)
+                    if (inputBox_.Contain(mouse.x, mouse.y) || mouse.button == Mouse::None) {
                         focusInput();
+                    }
                 }
+
+                appState->toggleRightMenuSize(1);
             }
 
             const int previousTarget = target_;
@@ -680,7 +685,7 @@ Component AssemblerDisplay(const std::string& arch) {
         }
     };
 
-    return Make<Impl>(arch);
+    return Make<Impl>(appState, arch);
 }
 
 } // namespace ScallopUI

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "appstate.hpp"
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
@@ -8,6 +9,6 @@
 
 namespace ScallopUI {
 
-ftxui::Component AssemblerDisplay(const std::string& arch);
+ftxui::Component AssemblerDisplay(AppStatePtr appState, const std::string& arch);
 
 }

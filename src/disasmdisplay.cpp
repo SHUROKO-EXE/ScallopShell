@@ -35,6 +35,8 @@ namespace ScallopUI {
             std::string inputBuffer_;
             bool lastBreakpointMtimeValid = false;
             uint64_t lastBaseAddress = 0;
+            bool showSymbols_ = true;
+            Box symButtonBox_;
             AppStatePtr state_;
 
             void setBreakpoint(uint64_t address, bool enabled) {
@@ -130,6 +132,10 @@ namespace ScallopUI {
                     // Only handle explicit checkbox clicks; otherwise let other panes react.
                     // Use Released to avoid toggling twice (Pressed + Released).
                     if (m.button == Mouse::Left && m.motion == Mouse::Released) {
+                        if (symButtonBox_.Contain(m.x, m.y)) {
+                            showSymbols_ = !showSymbols_;
+                            return true;
+                        }
                         for (int i = 0; i < instructionCount &&
                                         i < static_cast<int>(checkboxBoxes.size()); ++i) {
                             if (!checkboxBoxes[i].Contain(m.x, m.y)) continue;
@@ -226,9 +232,11 @@ namespace ScallopUI {
                 }
                 lastTotalLines = totalLines;
                 
-                auto header = hbox({text("  Disassembly "), text("  Base Addr:" + hex8ByteStr(Emulator::getRuntimeBaseAddress())), text("  Ctrl+B for Py Break.")}) 
+                auto symBtn = hbox({text("Symbols: "), text(showSymbols_ ? "[X]" : "[ ]") | reflect(symButtonBox_)});
+                auto header = hbox({text("  Disassembly "), text("  Base Addr:" + hex8ByteStr(Emulator::getRuntimeBaseAddress())), text("  Ctrl+B for Py Break.")})
                     | underlined | dim | bold | color(Color::CornflowerBlue);
-                lines.push_back(header);
+                auto headerLine = hbox({header, filler(), symBtn});
+                lines.push_back(headerLine);
 
                 size_t maxInstrLen = 0;
                 for (int r = 0; r < instructionCount; r++)
@@ -271,7 +279,7 @@ namespace ScallopUI {
                         disasmColor = color(Color::MediumPurple1);
 
                     size_t gap = maxInstrLen + 5 - info.instruction.size();
-                    std::string arrowStr = info.symbol.empty() ? std::string(gap + 1, ' ') : "  <" + std::string(gap - 3, '-') + " ";
+                    std::string arrowStr = (!showSymbols_ || info.symbol.empty()) ? std::string(gap + 1, ' ') : "  <" + std::string(gap - 3, '-') + " ";
 
                     auto instrColor = hasBreakpoint ? (isPythonScript ? color(Color::Blue1) : color(Color::Red1)) : color(Color::CornflowerBlue);
                     Element left = hbox({
@@ -280,7 +288,7 @@ namespace ScallopUI {
                         text(arrowStr) | color(Color::GrayLight),
                     });
 
-                    Element right = text(info.symbol) | color(Color::Magenta);
+                    Element right = text(showSymbols_ ? info.symbol : "") | color(Color::Magenta);
 
                     Element row = hbox({checkbox, left, right}) | reflect(rowBoxes[r]);
                     if (hasBreakpoint) {
@@ -296,13 +304,13 @@ namespace ScallopUI {
                         display = display | color(Color::Magenta);
 
                     if (showInputModal_) {
-                        auto cursor = text(inputBuffer_ + "▋") | color(Color::White);
+                        auto cursor = text(inputBuffer_ + "▋") | color(Color::CornflowerBlue);
                         auto modal_box = vbox({
                             text(" Set Python Script Path ") | bold | center,
                             separator(),
                             hbox({text(" > ") | color(Color::Cyan), cursor}) | border,
                             text(" Enter: confirm  ·  Esc: cancel ") | dim | center,
-                        }) | border | bgcolor(Color::Black) | color(Color::White);
+                        }) | border | bgcolor(Color::Black) | color(Color::CornflowerBlue);
                         return dbox({display, modal_box | vcenter | hcenter | clear_under});
                     }
 

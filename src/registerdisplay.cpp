@@ -6,7 +6,7 @@ using namespace ftxui;
 namespace ScallopUI
 {
 
-    Component RegisterDisplay()
+    Component RegisterDisplay(AppStatePtr appStatePtr)
     {
         class Impl : public ComponentBase
         {
@@ -21,6 +21,7 @@ namespace ScallopUI
             bool follow_tail = false;
             int totalLines = 0;
             int lastTotalLines = 0;
+            AppStatePtr state;
 
             bool Focusable() const override { return true; }
 
@@ -53,6 +54,9 @@ namespace ScallopUI
                 }
 
                 if (e.is_mouse()) {
+
+                    state->toggleRightMenuSize(0);
+
                     const auto& m = e.mouse();
                     if (!renderedArea.Contain(m.x, m.y))
                         return false;
@@ -130,11 +134,12 @@ namespace ScallopUI
             }
 
         public:
-            Impl()
+            Impl(AppStatePtr appStatePtr)
             {
+                state = appStatePtr;
             }
         };
 
-        return Make<Impl>();
+        return Make<Impl>(appStatePtr);
     }
 }

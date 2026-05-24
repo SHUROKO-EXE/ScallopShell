@@ -61,11 +61,11 @@ int main(int argc, char** argv) {
     state->code = ScallopUI::MemoryDisplayWithState(state, "rip", memoryRange, 0, 8);
     state->notes = ScallopUI::Notepad();
     state->cpuPicker = ScallopUI::cpuPicker();
-    state->registers = ScallopUI::RegisterDisplay();
+    state->registers = ScallopUI::RegisterDisplay(state);
     state->ioOutput = ScallopUI::ioDisplay();
     state->disasm = ScallopUI::DisasmDisplay(state);
     state->cliInput = ScallopUI::InputCli();
-    state->assembler = ScallopUI::AssemblerDisplay(arch);
+    state->assembler = ScallopUI::AssemblerDisplay(state, arch);
     
 
     auto cli_history = ScallopUI::CliHistory();

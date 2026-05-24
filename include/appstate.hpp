@@ -31,12 +31,17 @@ struct AppState {
     int selectedRightTab = 0;
     std::vector<std::string> rightTabNames = {"registers", "assembler"};
 
+    static constexpr int DEFAULT_REGISTER_SPLIT = 160;
+    static constexpr int DEFAULT_ASSEMBLER_SPLIT = 128;
+    
     // ===== Split sizes (persisted across renders) =====
     int disasmSplitSize = 44;
-    int registerSplitSize = 160;
+    int registerSplitSize = 160; // Default register selected
     int cliSplitSize = 10;
     int ioSplitSize = 150;
     int cliHistorySplitSize = 5;
+
+
 
     // ===== Modal stack =====
     std::vector<Modal> modals;
@@ -105,6 +110,31 @@ struct AppState {
 
     void restoreFocus() {
         focusPane(lastFocusedPane);
+    }
+
+    /**
+     * @param code 0 = Register Display, 1 = Assembler 
+     */
+    void toggleRightMenuSize(int code) {
+        static bool resizedTab = false;
+        static int lastSetValue = -1;
+
+        // If registerSplitSize no longer matches what we last set, the user dragged it.
+        if (lastSetValue != -1 && registerSplitSize != lastSetValue)
+            resizedTab = true;
+
+        if (!resizedTab) {
+            switch (code) {
+                case 0:
+                    registerSplitSize = DEFAULT_REGISTER_SPLIT;
+                    lastSetValue = DEFAULT_REGISTER_SPLIT;
+                    break;
+                case 1:
+                    registerSplitSize = DEFAULT_ASSEMBLER_SPLIT;
+                    lastSetValue = DEFAULT_ASSEMBLER_SPLIT;
+                    break;
+            }
+        }
     }
 
     // ===== Emulator state (could move more here) =====

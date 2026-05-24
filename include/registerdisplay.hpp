@@ -13,9 +13,10 @@
 #include <ftxui/dom/elements.hpp>
 
 #include "guihelpers.hpp"
+#include "appstate.hpp"
 
 namespace ScallopUI {
 
-    ftxui::Component RegisterDisplay();
+    ftxui::Component RegisterDisplay(AppStatePtr appStatePtr);
 
 }
