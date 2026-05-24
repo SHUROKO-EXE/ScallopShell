@@ -22,6 +22,7 @@ struct MemoryCache
     uint64_t address = std::numeric_limits<uint64_t>::max();
     int span = -1;
     std::vector<uint8_t> data;
+    int lastVCPU = -1;
 };
 
 static std::unordered_map<std::string, MemoryCache> &memoryCaches()
@@ -69,6 +70,14 @@ std::vector<uint8_t>* Emulator::getMemory(uint64_t address, int n,
     auto &cache = memoryCaches()[cacheKey];
     const uint64_t kNoAddress = std::numeric_limits<uint64_t>::max();
 
+    const int currentVCPU = getSelectedVCPU();
+    const bool vcpuJustChanged = (cache.lastVCPU != -1 && cache.lastVCPU != currentVCPU);
+    if (vcpuJustChanged) {
+        cache.data.clear();
+        cache.tryUpdateAgain = true;
+    }
+    cache.lastVCPU = currentVCPU;
+
     // If addr = -1 was passed in, save it to the cache
     if (address != kNoAddress)
         cache.address = address;
@@ -96,33 +105,36 @@ std::vector<uint8_t>* Emulator::getMemory(uint64_t address, int n,
         cache.targetModifications = targetMods;
     }
 
-    if (!update_requested)
+    if (!update_requested && !vcpuJustChanged)
     {
         return &cache.data;
     }
 
-    // Decremement span because it's going to do another modification
-    uint64_t span = static_cast<uint64_t>(cache.span - 1);
-    uint64_t hi = cache.address;
+    // Only send a new dump command when an actual update was requested.
+    // On a VCPU switch we skip the socket command and just read the existing file.
+    if (update_requested) {
+        uint64_t span = static_cast<uint64_t>(cache.span - 1);
+        uint64_t hi = cache.address;
 
-    if (span > std::numeric_limits<uint64_t>::max() - cache.address)
-        hi = std::numeric_limits<uint64_t>::max();
-    else
-        hi = cache.address + span;
+        if (span > std::numeric_limits<uint64_t>::max() - cache.address)
+            hi = std::numeric_limits<uint64_t>::max();
+        else
+            hi = cache.address + span;
 
-    char cmd[256];
-    std::snprintf(cmd, sizeof(cmd), "get memory 0x%llx %d %d %s\n",
-                  (unsigned long long)cache.address, n,
-                  selectedVCPU, selectedThread.c_str());
+        char cmd[256];
+        std::snprintf(cmd, sizeof(cmd), "get memory 0x%llx %d %d %s\n",
+                      (unsigned long long)cache.address, n,
+                      selectedVCPU, selectedThread.c_str());
 
-    if (socket.sendCommand(cmd).compare(0, 2, "ok") != 0)
-    {
-        cache.tryUpdateAgain = true;
-        return &cache.data;
+        if (socket.sendCommand(cmd).compare(0, 2, "ok") != 0)
+        {
+            cache.tryUpdateAgain = true;
+            return &cache.data;
+        }
     }
 
     static std::filesystem::path tempFilePath = std::filesystem::temp_directory_path();
-    std::ifstream memoryFile( tempFilePath / ("memdump" + std::to_string(getSelectedVCPU()) + ".txt"), std::ios::in);
+    std::ifstream memoryFile(tempFilePath / ("memdump" + std::to_string(getSelectedVCPU()) + ".txt"), std::ios::in);
     if (!memoryFile.is_open())
     {
         cache.tryUpdateAgain = true;
@@ -176,9 +188,7 @@ std::vector<uint8_t>* Emulator::getMemory(uint64_t address, int n,
             cache.modificationsMade = 0;
             cache.tryUpdateAgain = false;
             if (should_clear_flag)
-            {
                 removeFlag(0, VCPU_OP_DUMP_MEM);
-            }
         }
         else
         {
@@ -190,9 +200,7 @@ std::vector<uint8_t>* Emulator::getMemory(uint64_t address, int n,
         cache.modificationsMade = 0;
         cache.tryUpdateAgain = false;
         if (should_clear_flag)
-        {
             removeFlag(0, VCPU_OP_DUMP_MEM);
-        }
     }
 
     return &cache.data;

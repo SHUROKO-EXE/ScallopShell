@@ -10,15 +10,19 @@ std::vector<std::string> *Emulator::getRegisters()
     static std::vector<std::string> registers;
     static int lastVCPU = getSelectedVCPU();
 
+    bool vcpuChanged = lastVCPU != getSelectedVCPU();
+
     // Only change filepath when the vcpu changes
-    if (lastVCPU != getSelectedVCPU()) {
+    if (vcpuChanged) {
         kRegDump = std::filesystem::temp_directory_path() / ("regdump" + std::to_string(getSelectedVCPU()) + ".txt");
+        registers.clear();
+        tryagain = true;
     }
+    
     lastVCPU = getSelectedVCPU();
 
-
     const bool update_requested = getIsFlagQueued(0, VCPU_OP_DUMP_REGS);
-    if (!update_requested && !tryagain)
+    if ((!update_requested && !tryagain))
     {
         return &registers;
     }
