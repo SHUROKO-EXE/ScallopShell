@@ -80,6 +80,8 @@ You can take notes on the Notepad tab about what you're working on. Ctrl+S to sa
 
 You can run "step N", with N being the amount of instructions you want to step (this can be left blank for a default of 1). the "focus" command will filter out all memory outside of the low and high argument you specify (for example, "focus 0x400000 0x500000" will only output the instructions inside that range). Hitting enter will run the last command. Currently, all instructions executed outside of the binary range are ignored. This leaves things like mmap() with executable memory unhandled by Scallop Shell. This will be fixed in a later version. 
 
+Symbols are stolen from a seperate GDB session. GDB is not used in the instrumentation of this at all. It is only used as a database for symbols. I would certainly make a worse symbol parser than 30 years and a million lines of code from thousands of devs. If you are getting irrelevant symbols (or just want them off), there is a checkmark on the top right of the Disassembly panel (it says "Symbol: " and on by default) which when deactivated will stop displaying all symbols and only show raw assembly.
+
 Scallop Shell shows you the instruction right before it runs. So if you want to patch anything before it runs it'll let you. 
 
 ## Breakpoints 

@@ -233,7 +233,7 @@ namespace ScallopUI {
                 lastTotalLines = totalLines;
                 
                 auto symBtn = hbox({text("Symbols: "), text(showSymbols_ ? "[X]" : "[ ]") | reflect(symButtonBox_)});
-                auto header = hbox({text("  Disassembly "), text("  Base Addr:" + hex8ByteStr(Emulator::getRuntimeBaseAddress())), text("  Ctrl+B for Py Break.")})
+                auto header = hbox({text("  Disassembly "), text("  Base Addr:" + hex8ByteStr(Emulator::getRuntimeBaseAddress())), text("      Ctrl+B for Python Break.")})
                     | underlined | dim | bold | color(Color::CornflowerBlue);
                 auto headerLine = hbox({header, filler(), symBtn});
                 lines.push_back(headerLine);

@@ -243,6 +243,7 @@ static void log(unsigned int vcpu_index, void *udata)
     scallopstate.update();
 
     debug("TAIL OF LOG\n\n");
+
 }
 
 /**
@@ -293,5 +294,9 @@ void tb_trans_cb(qemu_plugin_id_t id, struct qemu_plugin_tb *tb)
 
         // Set an instruction callback
         qemu_plugin_register_vcpu_insn_exec_cb(insn, log, QEMU_PLUGIN_CB_RW_REGS, ctx);
+
+        // The memory logger only needs the stable instruction PC to join accesses to branch-log rows.
+        qemu_plugin_register_vcpu_mem_cb(insn, logMemoryAccesses, QEMU_PLUGIN_CB_NO_REGS,
+                                         QEMU_PLUGIN_MEM_RW, &ctx->pc);
     }
 }
