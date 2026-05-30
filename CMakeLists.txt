@@ -46,32 +46,57 @@ else()
 endif()
 
 # --- Keystone ---
-set(KEYSTONE_SOURCE_DIR "${CMAKE_BINARY_DIR}/_deps/keystone-src")
-set(BUILD_LIBS_ONLY ON CACHE BOOL "Only build the Keystone library" FORCE)
-set(KEYSTONE_BUILD_STATIC_RUNTIME OFF CACHE BOOL "Do not force static runtime when embedding Keystone" FORCE)
-set(SCALLOP_KEYSTONE_INCLUDE_DIR "${KEYSTONE_SOURCE_DIR}/include")
+option(SCALLOP_ENABLE_KEYSTONE "Enable Keystone assembler backend when available" ON)
+option(SCALLOP_FETCH_KEYSTONE "Fetch and build vendored Keystone when no system install is found" OFF)
 
-if (NOT EXISTS "${KEYSTONE_SOURCE_DIR}/CMakeLists.txt")
-  message(STATUS "Keystone not found — downloading...")
-  FetchContent_Declare(
-    keystone
-    GIT_REPOSITORY https://github.com/keystone-engine/keystone.git
-    GIT_TAG        0.9.2
-  )
-  FetchContent_MakeAvailable(keystone)
-  set(SCALLOP_KEYSTONE_INCLUDE_DIR "${keystone_SOURCE_DIR}/include")
+set(SCALLOP_HAS_KEYSTONE OFF)
+set(SCALLOP_KEYSTONE_TARGET "")
+
+if (SCALLOP_ENABLE_KEYSTONE)
+  find_path(SCALLOP_KEYSTONE_INCLUDE_DIR NAMES keystone/keystone.h)
+  find_library(SCALLOP_KEYSTONE_LIBRARY NAMES keystone)
+
+  if (SCALLOP_KEYSTONE_INCLUDE_DIR AND SCALLOP_KEYSTONE_LIBRARY)
+    add_library(scallop_keystone UNKNOWN IMPORTED)
+    set_target_properties(scallop_keystone PROPERTIES
+      IMPORTED_LOCATION "${SCALLOP_KEYSTONE_LIBRARY}"
+      INTERFACE_INCLUDE_DIRECTORIES "${SCALLOP_KEYSTONE_INCLUDE_DIR}"
+    )
+    set(SCALLOP_KEYSTONE_TARGET scallop_keystone)
+    set(SCALLOP_HAS_KEYSTONE ON)
+    message(STATUS "Using system Keystone: ${SCALLOP_KEYSTONE_LIBRARY}")
+  elseif (SCALLOP_FETCH_KEYSTONE)
+    set(KEYSTONE_SOURCE_DIR "${CMAKE_BINARY_DIR}/_deps/keystone-src")
+    set(BUILD_LIBS_ONLY ON CACHE BOOL "Only build the Keystone library" FORCE)
+    set(KEYSTONE_BUILD_STATIC_RUNTIME OFF CACHE BOOL "Do not force static runtime when embedding Keystone" FORCE)
+
+    if (NOT EXISTS "${KEYSTONE_SOURCE_DIR}/CMakeLists.txt")
+      message(STATUS "Keystone not found — downloading...")
+      FetchContent_Declare(
+        keystone
+        GIT_REPOSITORY https://github.com/keystone-engine/keystone.git
+        GIT_TAG        0.9.2
+      )
+      FetchContent_MakeAvailable(keystone)
+      set(SCALLOP_KEYSTONE_INCLUDE_DIR "${keystone_SOURCE_DIR}/include")
+    else()
+      message(STATUS "Using cached Keystone in ${KEYSTONE_SOURCE_DIR}")
+      add_subdirectory(${KEYSTONE_SOURCE_DIR} ${CMAKE_BINARY_DIR}/_deps/keystone-build EXCLUDE_FROM_ALL)
+      set(SCALLOP_KEYSTONE_INCLUDE_DIR "${KEYSTONE_SOURCE_DIR}/include")
+    endif()
+
+    if (TARGET keystone)
+      set(SCALLOP_KEYSTONE_TARGET keystone)
+      set(SCALLOP_HAS_KEYSTONE ON)
+    else()
+      message(WARNING "Keystone target was not created; assembler backend disabled")
+    endif()
+  else()
+    message(STATUS "Keystone not found; assembler backend disabled")
+  endif()
 else()
-  message(STATUS "Using cached Keystone in ${KEYSTONE_SOURCE_DIR}")
-  add_subdirectory(${KEYSTONE_SOURCE_DIR} ${CMAKE_BINARY_DIR}/_deps/keystone-build EXCLUDE_FROM_ALL)
+  message(STATUS "Keystone assembler backend disabled")
 endif()
-
-# Uncomment if you also want CLI11 (header-only)
-# FetchContent_Declare(
-#   CLI11
-#   GIT_REPOSITORY https://github.com/CLIUtils/CLI11
-#   GIT_TAG        v2.4.2
-# )
-# FetchContent_MakeAvailable(CLI11)
 
 # --- Sources ---
 # Pull in everything under src/
@@ -99,15 +124,17 @@ target_link_libraries(scallop PRIVATE
   ftxui::dom
   ftxui::screen
   ${CAPSTONE_LIB}
-  keystone
   MinimalSocket
   Threads::Threads
   util  # for openpty()
   # CLI11::CLI11      # uncomment if enabled CLI11 above
 )
 
-target_include_directories(scallop PRIVATE ${SCALLOP_KEYSTONE_INCLUDE_DIR})
-target_compile_definitions(scallop PRIVATE SCALLOP_HAS_KEYSTONE=1)
+if (SCALLOP_HAS_KEYSTONE)
+  target_link_libraries(scallop PRIVATE ${SCALLOP_KEYSTONE_TARGET})
+  target_include_directories(scallop PRIVATE ${SCALLOP_KEYSTONE_INCLUDE_DIR})
+  target_compile_definitions(scallop PRIVATE SCALLOP_HAS_KEYSTONE=1)
+endif()
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(scallop PRIVATE -Wall -Wextra -Wpedantic)

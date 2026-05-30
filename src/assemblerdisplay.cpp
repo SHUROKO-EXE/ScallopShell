@@ -38,17 +38,6 @@ struct ArchProfile {
 #endif
 };
 
-std::string formatBytes(const unsigned char* data, size_t size) {
-    std::ostringstream out;
-    out << std::hex << std::setfill('0');
-    for (size_t i = 0; i < size; ++i) {
-        if (i != 0)
-            out << ' ';
-        out << std::setw(2) << static_cast<int>(data[i]);
-    }
-    return out.str();
-}
-
 std::string normalizeArch(std::string arch) {
     std::transform(arch.begin(), arch.end(), arch.begin(), [](unsigned char c) {
         if (c == '-')
@@ -126,17 +115,6 @@ void markUnsupported(ArchProfile& profile, const std::string& arch) {
     setEndianChoices(profile, false, false);
 }
 
-ArchProfile makeProfile(const std::string& label) {
-    ArchProfile profile;
-    profile.qemuArch = label;
-    profile.displayArch = label;
-    profile.placeholder = label + " assembly";
-    profile.supported = true;
-    setDefaultSyntax(profile);
-    setEndianChoices(profile, false, false);
-    return profile;
-}
-
 ArchProfile profileForArch(const std::string& rawArch) {
     const std::string arch = normalizeArch(rawArch);
     ArchProfile profile;
@@ -153,6 +131,8 @@ ArchProfile profileForArch(const std::string& rawArch) {
 #ifdef SCALLOP_HAS_KEYSTONE
         profile.keystoneArch = KS_ARCH_X86;
         profile.baseMode = mode;
+#else
+        (void)mode;
 #endif
     };
 
@@ -264,6 +244,28 @@ ArchProfile profileForArch(const std::string& rawArch) {
 }
 
 #ifdef SCALLOP_HAS_KEYSTONE
+std::string formatBytes(const unsigned char* data, size_t size) {
+    std::ostringstream out;
+    out << std::hex << std::setfill('0');
+    for (size_t i = 0; i < size; ++i) {
+        if (i != 0)
+            out << ' ';
+        out << std::setw(2) << static_cast<int>(data[i]);
+    }
+    return out.str();
+}
+
+ArchProfile makeProfile(const std::string& label) {
+    ArchProfile profile;
+    profile.qemuArch = label;
+    profile.displayArch = label;
+    profile.placeholder = label + " assembly";
+    profile.supported = true;
+    setDefaultSyntax(profile);
+    setEndianChoices(profile, false, false);
+    return profile;
+}
+
 ArchProfile makeKeystoneProfile(const std::string& label, ks_arch arch, int mode) {
     ArchProfile profile = makeProfile(label);
     profile.keystoneArch = arch;
@@ -432,7 +434,7 @@ Component AssemblerDisplay(AppStatePtr appState, const std::string& arch) {
         AppStatePtr appState; 
 
         explicit Impl(AppStatePtr appStatePtr, std::string targetArch)
-            : appState(appStatePtr), detectedProfile_(profileForArch(targetArch)) {
+            : detectedProfile_(profileForArch(targetArch)), appState(appStatePtr) {
             targets_ = availableTargetProfiles(detectedProfile_);
             targetNames_ = targetLabelsFrom(targets_);
             target_ = targetIndexForDetectedProfile(targets_, detectedProfile_);

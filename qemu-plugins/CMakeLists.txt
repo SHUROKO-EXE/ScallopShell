@@ -31,9 +31,9 @@ if(NOT IS_DIRECTORY "${QEMU_BUILD}")
     )
 endif()
 
-if(NOT EXISTS "${QEMU_SRC}/include/qemu/qemu-plugin.h")
+if(NOT EXISTS "${QEMU_SRC}/include/plugins/qemu-plugin.h")
     message(FATAL_ERROR
-        "Could not find QEMU plugin header at ${QEMU_SRC}/include/qemu/qemu-plugin.h.\n"
+        "Could not find QEMU plugin header at ${QEMU_SRC}/include/plugins/qemu-plugin.h.\n"
         "Check that QEMU_SRC points at the QEMU source tree."
     )
 endif()
