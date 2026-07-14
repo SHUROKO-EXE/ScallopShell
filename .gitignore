@@ -4,3 +4,4 @@ DEBUG_LOG.txt
 error.txt
 qemu.log 
 testingBin
+scallop-env.sh

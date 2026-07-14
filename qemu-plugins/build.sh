@@ -16,6 +16,19 @@ if [[ ! -d "$QEMU_BUILD_DIR" ]]; then
   exit 1
 fi
 
+QEMU_CONFIG_HOST="$QEMU_BUILD_DIR/config-host.h"
+if [[ ! -f "$QEMU_CONFIG_HOST" ]]; then
+  printf 'error: QEMU configuration header not found: %s\n' "$QEMU_CONFIG_HOST" >&2
+  printf 'configure and build QEMU before building the plugin\n' >&2
+  exit 1
+fi
+
+if ! grep -Eq '^#define[[:space:]]+CONFIG_CAPSTONE([[:space:]]|$)' "$QEMU_CONFIG_HOST"; then
+  printf 'error: QEMU was built without Capstone support\n' >&2
+  printf 'reconfigure QEMU with --enable-plugins --enable-capstone\n' >&2
+  exit 1
+fi
+
 mkdir -p "$SCRIPT_DIR/build"
 cd "$SCRIPT_DIR/build"
 

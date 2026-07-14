@@ -9,7 +9,7 @@
 #include <pthread.h>
 #include <glib.h>
 extern "C" {
-    #include "plugin/qemu-plugin.h"
+    #include "plugins/qemu-plugin.h"
 }
 #include "gate.hpp"
 #include "string"

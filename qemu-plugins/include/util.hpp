@@ -2,7 +2,7 @@
 #include "string"
 #include "stdlib.h"
 #include <cstdint>
-#include "plugin/qemu-plugin.h"
+#include "plugins/qemu-plugin.h"
 
 /**
  * Convert bytes into a hex string.

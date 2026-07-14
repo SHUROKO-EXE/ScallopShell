@@ -31,6 +31,24 @@ if(NOT IS_DIRECTORY "${QEMU_BUILD}")
     )
 endif()
 
+set(QEMU_CONFIG_HOST "${QEMU_BUILD}/config-host.h")
+if(NOT EXISTS "${QEMU_CONFIG_HOST}")
+    message(FATAL_ERROR
+        "QEMU configuration header does not exist: ${QEMU_CONFIG_HOST}\n"
+        "Configure and build QEMU before building this plugin."
+    )
+endif()
+
+file(STRINGS "${QEMU_CONFIG_HOST}" QEMU_CAPSTONE_CONFIG
+    REGEX "^#define[ \t]+CONFIG_CAPSTONE([ \t]|$)"
+)
+if(NOT QEMU_CAPSTONE_CONFIG)
+    message(FATAL_ERROR
+        "QEMU was built without Capstone support.\n"
+        "Reconfigure QEMU with --enable-plugins --enable-capstone."
+    )
+endif()
+
 if(NOT EXISTS "${QEMU_SRC}/include/plugins/qemu-plugin.h")
     message(FATAL_ERROR
         "Could not find QEMU plugin header at ${QEMU_SRC}/include/plugins/qemu-plugin.h.\n"
