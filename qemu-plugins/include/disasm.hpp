@@ -43,4 +43,4 @@ static void log(unsigned int vcpu_index, void *udata);
  * "qemu_plugin_register_vcpu_insn_exec_cb()" callback with log() for each 
  * translation, 
  */
-void tb_trans_cb(qemu_plugin_id_t id, struct qemu_plugin_tb *tb);
+void tb_trans_cb(struct qemu_plugin_tb *tb, void *udata);

@@ -390,9 +390,9 @@ void ensure_binary_configs_ready()
     ensure_binary_configs_ready_impl();
 }
 
-static void vcpu_init_cb(qemu_plugin_id_t id, unsigned int vcpu_index)
+static void vcpu_init_cb(unsigned int vcpu_index, void *udata)
 {
-    (void)id;
+    (void)udata;
     (void)vcpu_index;
     ensure_binary_context_ready();
     ensure_binary_configs_ready();
@@ -950,7 +950,7 @@ bool ScallopState::getIsFlagQueued(int vcpu, vcpu_operation_t cmd) {
 /**
  * Handle when the plugin is told to die.
  */
-static void plugin_exit(qemu_plugin_id_t id, void *u)
+static void plugin_exit(void *u)
 {
     scallopstate.getGates().pauseAll();
     stop_request_worker();
@@ -1056,8 +1056,8 @@ int qemu_plugin_install(qemu_plugin_id_t id, const qemu_info_t *info, int argc, 
         start_request_worker();
     }
 
-    qemu_plugin_register_vcpu_init_cb(id, vcpu_init_cb);
-    qemu_plugin_register_vcpu_tb_trans_cb(id, tb_trans_cb);
+    qemu_plugin_register_vcpu_init_cb(id, vcpu_init_cb, NULL);
+    qemu_plugin_register_vcpu_tb_trans_cb(id, tb_trans_cb, NULL);
     qemu_plugin_register_atexit_cb(id, plugin_exit, NULL);
     return 0;
 }

@@ -34,7 +34,8 @@ void writeReg()
 
                 // Read into an empty GByteArray just so you can get the size of the register
                 GByteArray *curRegisterValue = g_byte_array_new();
-                int registerLength = qemu_plugin_read_register(d->handle, curRegisterValue);
+                bool readOk = qemu_plugin_read_register(d->handle, curRegisterValue);
+                int registerLength = readOk ? (int)curRegisterValue->len : 0;
  
                 GByteArray *newRegisterValue = g_byte_array_new();
 

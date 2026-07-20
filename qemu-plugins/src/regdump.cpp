@@ -33,7 +33,8 @@ int regDump()
 
                 // Read into an empty GByteArray so QEMU sets the true size.
                 GByteArray *val = g_byte_array_new();
-                int got = qemu_plugin_read_register(d->handle, val);
+                bool read_ok = qemu_plugin_read_register(d->handle, val);
+                int got = read_ok ? (int)val->len : 0;
 
                 if (got > 0 && (guint)got == val->len)
                 {
