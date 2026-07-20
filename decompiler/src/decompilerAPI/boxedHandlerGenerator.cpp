@@ -19,6 +19,8 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Object/ELFObjectFile.h"
+#include "llvm/Config/llvm-config.h"
+#include "llvm/TargetParser/Triple.h"
 
 // Defined in memory.cpp
 std::vector<uint8_t> relocateX64Chunk(const std::vector<uint8_t>& bytes,
@@ -83,21 +85,27 @@ std::vector<uint8_t> emitBoxedHandler(
         throw std::runtime_error("LLVM target lookup failed: " + error);
 
     llvm::TargetOptions opt;
+#if LLVM_VERSION_MAJOR >= 21
+    // LLVM 21 replaced the string-triple overloads with llvm::Triple ones.
+    llvm::Triple triple(targetTriple);
+#else
+    const std::string& triple = targetTriple;
+#endif
     auto targetMachine = std::unique_ptr<llvm::TargetMachine>(
         target->createTargetMachine(
-            targetTriple, "generic", "", opt, llvm::Reloc::Static,
+            triple, "generic", "", opt, llvm::Reloc::Static,
             llvm::CodeModel::Small, llvm::CodeGenOptLevel::Default));
     if (!targetMachine)
         throw std::runtime_error("Failed to create LLVM TargetMachine");
 
     llvm::LLVMContext context;
     auto module = std::make_unique<llvm::Module>("scallop_boxed_handler", context);
-    module->setTargetTriple(targetTriple);
+    module->setTargetTriple(triple);
     module->setDataLayout(targetMachine->createDataLayout());
 
     llvm::IRBuilder<> builder(context);
     auto* i64    = builder.getInt64Ty();
-    auto* i64ptr = llvm::PointerType::getUnqual(i64);
+    auto* i64ptr = llvm::PointerType::getUnqual(context);
     auto* voidTy = builder.getVoidTy();
     auto* blobTy = llvm::FunctionType::get(voidTy, {}, false);
     auto* fnType = llvm::FunctionType::get(voidTy, {}, false);
