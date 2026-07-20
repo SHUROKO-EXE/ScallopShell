@@ -25,6 +25,7 @@ OPTIONS:
   -s,     --system BOOLEAN    Is system? 
 ```
 ## Installation
+If you want, there is an install.sh which will do the full installation for you, including package dependencies. If you want to build it yourself for some reason (like maybe a custom QEMU version), you can do the following:
 
 Build QEMU from source, make sure the TCG Plugin flags are set. Without this, the Linux native implementation will not work. Then, go to ~/.bashrc, 
 ```
@@ -61,6 +62,10 @@ If you want to add it to your command line, copy paste this into your .bashrc fi
 export PATH=$PATH:~/path/to/package
 ```
 You can also just move it to your /usr/bin/. I don't see a downside to this. 
+
+## Assembler
+
+If you don't want to install Keystone, you can specify --no-keystone on install.sh. 
  
 ## Controls
 
