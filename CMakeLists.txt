@@ -47,7 +47,7 @@ endif()
 
 # --- Keystone ---
 option(SCALLOP_ENABLE_KEYSTONE "Enable Keystone assembler backend when available" ON)
-option(SCALLOP_FETCH_KEYSTONE "Fetch and build vendored Keystone when no system install is found" OFF)
+option(SCALLOP_FETCH_KEYSTONE "Fetch and build vendored Keystone when no system install is found" ON)
 
 set(SCALLOP_HAS_KEYSTONE OFF)
 set(SCALLOP_KEYSTONE_TARGET "")
@@ -75,7 +75,7 @@ if (SCALLOP_ENABLE_KEYSTONE)
       FetchContent_Declare(
         keystone
         GIT_REPOSITORY https://github.com/keystone-engine/keystone.git
-        GIT_TAG        0.9.2
+        GIT_TAG        0d9567f08c0c23e8f604b2cad3d49450c93cfb40
       )
       FetchContent_MakeAvailable(keystone)
       set(SCALLOP_KEYSTONE_INCLUDE_DIR "${keystone_SOURCE_DIR}/include")
