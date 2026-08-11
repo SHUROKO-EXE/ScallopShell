@@ -25,7 +25,7 @@ OPTIONS:
   -s,     --system BOOLEAN    Is system? 
 ```
 ## Installation
-If you want, there is an install.sh which will do the full installation for you, including package dependencies. If you want to build it yourself for some reason (like maybe a custom QEMU version), you can do the following:
+99% of people should use ```install.sh``` which will do the full installation for you, including package dependencies. However, some people may need to do a custom build in case they want to use a different QEMU src or some other reason. If you want to do custom things, follow the instructions below:
 
 Build QEMU from source, make sure the TCG Plugin flags are set. Without this, the Linux native implementation will not work. Then, go to ~/.bashrc, 
 ```
@@ -34,9 +34,7 @@ export SCALLOP_QEMU_BUILD= # Build path of QEMU
 export SCALLOP_QEMU_PLUGIN= # Plugin path for scallop_plugin.so
 export SCALLOP_SOURCE= # High level directory for Scallop Shell (where this README is)
 ```
-### To compile from source 
-
-Above instructions. Then download the capstone package. WITHOUT THIS THIS WILL NOT FUNCTION. For me in Fedora, it'll be:
+Then download the capstone package. WITHOUT THIS THIS WILL NOT FUNCTION. For me in Fedora, it'll be:
 ```bash
 sudo dnf install capstone        # Just running the precompiled binary
 sudo dnf install capstone-devel  # Compiling from source
